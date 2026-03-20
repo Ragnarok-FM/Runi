@@ -30,8 +30,11 @@ class RuniClient(commands.Bot):
         self.guild_ids = guild_ids
 
     async def setup_hook(self):
-        for module in pkgutil.iter_modules(cogs.__path__):
-            await self.load_extension(f"runi.cogs.{module.name}")
+        for module in pkgutil.walk_packages(cogs.__path__, cogs.__name__ + "."):
+            if module.ispkg:
+                continue
+
+            await self.load_extension(module.name)
 
         for guild_id in self.guild_ids:
             guild = discord.Object(id=guild_id)
