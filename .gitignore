@@ -4,9 +4,43 @@ venv/
 env/
 bot-env/
 
-# Python cache
+# Python cache / compiled files
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# Type checkers
+.mypy_cache/
+.pyright/
 
 # Environment variables
 .env
+.env.*
+
+# IDE / editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS files
+.DS_Store
+Thumbs.db

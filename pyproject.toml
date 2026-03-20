@@ -1,0 +1,14 @@
+[project]
+name = "runi"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "discord.py",
+    "python-dotenv"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+runi = "runi.main:main"
