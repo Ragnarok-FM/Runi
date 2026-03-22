@@ -3,7 +3,8 @@ import pkgutil
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from runi import log, cogs
+from . import cogs
+from .utils import log
 
 def get_guild_ids() -> set[int]:
     env = os.environ.get("ENV", "dev").strip().lower()
