@@ -5,6 +5,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from . import cogs
 from .utils import log
+from .utils.embed_renderer import EmbedRenderer
 
 def get_guild_ids() -> set[int]:
     env = os.environ.get("ENV", "dev").strip().lower()
@@ -29,7 +30,8 @@ class RuniClient(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned_or("!"), intents=intents)
 
         self.guild_ids = guild_ids
-
+        self.embed_renderer = EmbedRenderer()
+        
     async def setup_hook(self):
         for module in pkgutil.walk_packages(cogs.__path__, cogs.__name__ + "."):
             if module.ispkg:
