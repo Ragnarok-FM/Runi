@@ -19,5 +19,30 @@ TEMPLATES = {
             ("Skill Cooldown", "7%", True),
             ("Skill Damage", "30%", True),
         ]
+    },
+    "health_formula": {
+        "title": "Health formula",
+        "description": (
+            "The health formula is as follows:"
+        ),
+        "fields": [
+            ("Flat Health", "Player Base Health + Gear Base Health + Pet Base Health + Skill Passive Health", False),
+            ("Additive Health", "Mount Health% + Health% substats", False),
+            ("Skin Health", "Skins Health% + Skin Set Bonus (only with full set)", False),
+            ("Total Health", "Flat Health x Additive Health x Skin Health", False)
+        ]
+    },
+    "damage_formula": {
+        "title": "Damage formula",
+        "description": (
+            "The damage formula is as follows:"
+        ),
+        "fields": [
+            ("Flat Damage", "Player Base Damage + Gear Base Damage + Pet Base Damage + Skill Passive Damage", False),
+            ("Additive Damage", "Mount Damage% + Damage% substats", False),
+            ("Weapon Damage", "Melee or Ranged Damage% (when using the respective weapon)", False),
+            ("Skin Damage", "Skins Damage% + Skin Set Bonus (only with full set)", False),
+            ("Total Damage", "Flat Damage x Additive Damage x Weapon Damage x Skin Damage", False)
+        ]
     }
 }
