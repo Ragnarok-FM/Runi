@@ -110,7 +110,10 @@ async def main():
     await client.start(token.strip())
 
 def run():
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Shutting down bot...")
 
 if __name__ == "__main__":
     run()
