@@ -1,7 +1,8 @@
 import discord
-from .colors import COLOR_MAP
-from .text_utils import truncate, SafeDict
-from ..templates import templates
+
+from runi.utils import colors
+from runi.utils.text_utils import truncate, SafeDict
+from runi.templates import templates
 
 
 MAX_TITLE = 256
@@ -28,7 +29,7 @@ class EmbedRenderer:
         embed = discord.Embed(
             title=title,
             description=description,
-            color=COLOR_MAP.get(template.get("color"), discord.Color.blurple())
+            color= colors.get_color(template.get("color"))
         )
 
         for i, field in enumerate(template.get("fields", [])):

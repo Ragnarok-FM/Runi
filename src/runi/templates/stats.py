@@ -18,8 +18,10 @@ TEMPLATES = {
             ("Ranged Damage", "15%", True),
             ("Skill Cooldown", "7%", True),
             ("Skill Damage", "30%", True),
-        ]
+        ],
+        "footer": "Runi • Game Info"
     },
+
     "health_formula": {
         "title": "Health formula",
         "description": (
@@ -30,8 +32,10 @@ TEMPLATES = {
             ("Additive Health", "Mount Health% + Health% substats", False),
             ("Skin Health", "Skins Health% + Skin Set Bonus (only with full set)", False),
             ("Total Health", "Flat Health x Additive Health x Skin Health", False)
-        ]
+        ],
+        "footer": "Runi • Game Info"
     },
+    
     "damage_formula": {
         "title": "Damage formula",
         "description": (
@@ -43,6 +47,7 @@ TEMPLATES = {
             ("Weapon Damage", "Melee or Ranged Damage% (when using the respective weapon)", False),
             ("Skin Damage", "Skins Damage% + Skin Set Bonus (only with full set)", False),
             ("Total Damage", "Flat Damage x Additive Damage x Weapon Damage x Skin Damage", False)
-        ]
+        ],
+        "footer": "Runi • Game Info"
     }
 }

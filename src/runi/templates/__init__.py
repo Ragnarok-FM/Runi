@@ -1,5 +1,4 @@
-from .stats import TEMPLATES as STATS
-
+from runi.templates.stats import TEMPLATES as STATS
 
 def merge_templates(*dicts):
     merged = {}
