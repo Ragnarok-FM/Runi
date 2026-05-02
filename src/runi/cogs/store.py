@@ -15,7 +15,6 @@ TYPE_LABELS = {
 
 
 # TODO: Add validation, enforce parameters in some functions, and handle edge cases more gracefully (i.e. gifting role items when bot lacks permissions)
-# TODO: Turn store items into buttons instead of using /buy command
 class Store(commands.Cog):
     def __init__(self, bot: 'RuniClient'):
         self.bot = bot
