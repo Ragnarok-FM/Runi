@@ -93,13 +93,14 @@ TEMPLATES = {
         "fields": [
             ("Your new balance", "{balance:,} Runes", True)
         ],
-        "color": "gold",
+        "color": "green",
         "footer": "Runi • Economy"
     },
 
     "error_insufficient_funds": {
         "title": "❌ Not Enough Runes",
         "description": "You only have {balance:,} Runes.",
-        "color": "red"
+        "color": "red",
+        "footer": "Runi • Economy"
     }
 }
