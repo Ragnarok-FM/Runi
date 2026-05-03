@@ -29,15 +29,17 @@ class Store(commands.Cog):
         assert guild_id is not None
         items = await self.bot.db.get_store_items(guild_id)
 
-        embed = discord.Embed(
-            title="🛒 Runeshard Store",
-            description="Spend your Runes on items and exclusive roles!\nUse `/buy <item id>` to purchase.",
-            color=discord.Color(0xF1C40F),
+        description = (
+            "The store is empty right now — check back later!"
+            if not items
+            else "Spend your Runes on items and exclusive roles!\nUse `/buy <item id>` to purchase."
         )
 
-        if not items:
-            embed.description = "The store is empty right now — check back later!"
-        else:
+        embed = self.bot.embed_renderer.render("store", {
+            "description": description
+        })
+
+        if items:
             # Group by type
             groups: dict[str, list] = {}
             for item in items:
@@ -45,15 +47,14 @@ class Store(commands.Cog):
 
             for item_type, group in groups.items():
                 label = TYPE_LABELS.get(item_type, item_type.capitalize())
-                lines = []
-                for item in group:
-                    lines.append(
-                        f"`#{item['item_id']}` **{item['name']}** — {item['price']:,} Runes\n"
-                        f"  {item['description']}"
-                    )
+
+                lines = [
+                    f"`#{i['item_id']}` **{i['name']}** — {i['price']:,} Runes\n  {i['description']}"
+                    for i in group
+                ]
+
                 embed.add_field(name=label, value="\n".join(lines), inline=False)
 
-        embed.set_footer(text="Runi • Store")
         await interaction.followup.send(embed=embed)
 
     # ── /buy ───────────────────────────────────────────────────────────────────
@@ -86,12 +87,9 @@ class Store(commands.Cog):
             else:
                 desc = "Something went wrong. Please try again."
 
-            embed = discord.Embed(
-                title="❌ Purchase Failed",
-                description=desc,
-                color=discord.Color(0xF1C40F),
-            )
-            embed.set_footer(text="Runi • Store")
+            embed = self.bot.embed_renderer.render("store_purchase_failed", {
+                "description": desc
+            })
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
@@ -107,13 +105,11 @@ class Store(commands.Cog):
                 except discord.Forbidden:
                     pass  # Bot lacks permissions — purchased but role not assigned
 
-        embed = discord.Embed(
-            title="✅ Purchase Successful!",
-            description=f"You bought **{item['name']}** for {item['price']:,} Runes.",
-            color=discord.Color(0xF1C40F),
-        )
-        embed.add_field(name="Remaining Balance", value=f"{result['balance']:,} Runes")
-        embed.set_footer(text="Runi • Store")
+        embed = self.bot.embed_renderer.render("store_purchase_success", {
+            "name": item["name"],
+            "price": item["price"],
+            "balance": result["balance"]
+        })
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ── /inventory ─────────────────────────────────────────────────────────────
@@ -126,21 +122,19 @@ class Store(commands.Cog):
         assert guild is not None
         items = await self.bot.db.get_inventory(interaction.user.id, guild.id)
 
-        embed = discord.Embed(
-            title=f"🎒 {interaction.user.display_name}'s Inventory",
-            color=discord.Color(0xF1C40F),
-        )
-
         if not items:
-            embed.description = "Your inventory is empty — visit `/store` to get started!"
+            content = "Your inventory is empty — visit `/store` to get started!"
         else:
-            lines = []
-            for item in items:
-                label = TYPE_LABELS.get(item["type"], item["type"].capitalize())
-                lines.append(f"{label}: **{item['name']}** — {item['description']}")
-            embed.description = "\n".join(lines)
+            lines = [
+                f"{TYPE_LABELS.get(i['type'], i['type'].capitalize())}: **{i['name']}** — {i['description']}"
+                for i in items
+            ]
+            content = "\n".join(lines)
 
-        embed.set_footer(text="Runi • Store")
+        embed = self.bot.embed_renderer.render("inventory", {
+            "username": interaction.user.display_name,
+            "content": content
+        })
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ── Admin: /gift ──────────────────────────────────────────────────────────────────
@@ -162,29 +156,19 @@ class Store(commands.Cog):
         )
 
         if result["reason"] == "self_transfer":
-            embed = discord.Embed(
-                title="❌ Nice Try",
-                description="You can't gift an item to yourself!",
-                color=discord.Color(0xF1C40F),
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
+            data = ("❌ Nice Try", "You can't gift an item to yourself!")
+        elif result["reason"] == "not_owned":
+            data = ("❌ Item Not Found", "You don't own that item. Check `/inventory` for your items.")
+        elif result["reason"] == "already_owned":
+            data = ("❌ Already Owned", f"{member.display_name} already owns **{result['item']['name']}**!")
+        else:
+            data = None
 
-        if result["reason"] == "not_owned":
-            embed = discord.Embed(
-                title="❌ Item Not Found",
-                description="You don't own that item. Check `/inventory` for your items.",
-                color=discord.Color(0xF1C40F),
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        if result["reason"] == "already_owned":
-            embed = discord.Embed(
-                title="❌ Already Owned",
-                description=f"{member.display_name} already owns **{result['item']['name']}**!",
-                color=discord.Color(0xF1C40F),
-            )
+        if data:
+            embed = self.bot.embed_renderer.render("store_gift_error", {
+                "title": data[0],
+                "description": data[1]
+            })
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
@@ -201,12 +185,11 @@ class Store(commands.Cog):
                 except discord.Forbidden:
                     pass
 
-        embed = discord.Embed(
-            title="🎁 Gift Sent!",
-            description=f"{interaction.user.display_name} gifted **{item['name']}** to {member.mention}!",
-            color=discord.Color(0xF1C40F),
-        )
-        embed.set_footer(text="Runi • Store")
+        embed = self.bot.embed_renderer.render("store_gift_success", {
+            "sender": interaction.user.display_name,
+            "item": item["name"],
+            "receiver": member.display_name
+        })
         await interaction.followup.send(embed=embed)
 
     # ── Admin: /additem ────────────────────────────────────────────────────────
@@ -241,12 +224,12 @@ class Store(commands.Cog):
         item_id = await self.bot.db.add_store_item(
             guild_id, name, description, price, item_type.value, role_id
         )
-        embed = discord.Embed(
-            title="✅ Item Added",
-            description=f"**{name}** (ID: `#{item_id}`) added to the store for {price:,} Runes.",
-            color=discord.Color(0xF1C40F),
-        )
-        embed.set_footer(text="Runi • Store")
+        embed = self.bot.embed_renderer.render("store_add_item", {
+            "name": name,
+            "id": item_id,
+            "price": price,
+        })
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ── Admin: /removeitem ─────────────────────────────────────────────────────
@@ -260,18 +243,14 @@ class Store(commands.Cog):
         assert guild_id is not None
         removed = await self.bot.db.remove_store_item(item_id, guild_id)
         if removed:
-            embed = discord.Embed(
-                title="🗑️ Item Removed",
-                description=f"Item `#{item_id}` has been removed from the store.",
-                color=discord.Color(0xF1C40F),
-            )
+            embed = self.bot.embed_renderer.render("store_remove_item_success", {
+                "id": item_id
+            })
         else:
-            embed = discord.Embed(
-                title="❌ Not Found",
-                description=f"No active item with ID `#{item_id}` was found.",
-                color=discord.Color(0xF1C40F),
-            )
-        embed.set_footer(text="Runi • Store")
+            embed = self.bot.embed_renderer.render("store_remove_item_not_found", {
+                "id": item_id
+            })
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ── Error handler ──────────────────────────────────────────────────────────
@@ -280,10 +259,8 @@ class Store(commands.Cog):
     @removeitem.error
     async def admin_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.MissingPermissions):
-            await interaction.response.send_message(
-                "❌ You need Administrator permissions to use this command.",
-                ephemeral=True,
-            )
+            embed = self.bot.embed_renderer.render("error_missing_admin_permissions", {})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot: 'RuniClient'):
