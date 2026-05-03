@@ -237,7 +237,7 @@ class Economy(commands.Cog):
     @give.error
     async def admin_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.MissingPermissions):
-            embed = self.bot.embed_renderer.render("error_missing_permissions", {})
+            embed = self.bot.embed_renderer.render("error_missing_admin_permissions", {})
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: 'RuniClient'):
