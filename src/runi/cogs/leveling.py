@@ -37,24 +37,19 @@ class Leveling(commands.Cog):
         filled = int(bar_width * xp_into_level / xp_span) if xp_span else bar_width
         bar = "█" * filled + "░" * (bar_width - filled)
 
-        embed = discord.Embed(
-            title=f"🧙 {target.display_name}'s Profile",
-            color=discord.Color(0x5865F2),
-        )
-        embed.set_thumbnail(url=target.display_avatar.url)
-
-        embed.add_field(name="Level", value=f"{level}", inline=True)
-        embed.add_field(name="Total XP", value=f"{xp:,}", inline=True)
-        embed.add_field(name="Runes 💎", value=f"{user['runeshards']:,}", inline=True)
-
-        embed.add_field(
-            name=f"Progress to Level {level + 1}",
-            value=f"`{bar}` {xp_into_level:,} / {xp_span:,} XP",
-            inline=False,
-        )
-
-        embed.add_field(name="Daily Streak", value=f"{user['daily_streak']} 🔥", inline=True)
-        embed.add_field(name="Items Owned", value=f"{len(inventory)}", inline=True)
+        embed = self.bot.embed_renderer.render("profile", {
+            "username": target.display_name,
+            "avatar": target.display_avatar.url,
+            "level": level,
+            "xp": xp,
+            "runeshards": user["runeshards"],
+            "next_level": level + 1,
+            "bar": bar,
+            "xp_into_level": xp_into_level,
+            "xp_span": xp_span,
+            "daily_streak": user["daily_streak"],
+            "item_count": len(inventory),
+        })
 
         if inventory:
             item_list = ", ".join(i["name"] for i in inventory[:5])
@@ -62,7 +57,6 @@ class Leveling(commands.Cog):
                 item_list += f" + {len(inventory) - 5} more"
             embed.add_field(name="Inventory", value=item_list, inline=False)
 
-        embed.set_footer(text="Runi • Profile")
         await interaction.followup.send(embed=embed)
 
     # ── /rank ──────────────────────────────────────────────────────────────────
@@ -87,19 +81,17 @@ class Leveling(commands.Cog):
         filled = int(bar_width * xp_into_level / xp_span) if xp_span else bar_width
         bar = "█" * filled + "░" * (bar_width - filled)
 
-        embed = discord.Embed(
-            title=f"⚡ {target.display_name}'s Rank",
-            color=discord.Color(0x5865F2),
-        )
-        embed.add_field(name="Level", value=f"{level}", inline=True)
-        embed.add_field(name="Total XP", value=f"{xp:,}", inline=True)
-        embed.add_field(
-            name=f"Progress to Level {level + 1}",
-            value=f"`{bar}` {xp_into_level:,} / {xp_span:,} XP",
-            inline=False,
-        )
-        embed.set_thumbnail(url=target.display_avatar.url)
-        embed.set_footer(text="Runi • XP System")
+        embed = self.bot.embed_renderer.render("rank", {
+            "username": target.display_name,
+            "avatar": target.display_avatar.url,
+            "level": level,
+            "xp": xp,
+            "next_level": level + 1,
+            "bar": bar,
+            "xp_into_level": xp_into_level,
+            "xp_span": xp_span,
+        })
+
         await interaction.response.send_message(embed=embed)
 
     # ── /leaderboard ───────────────────────────────────────────────────────────
@@ -112,13 +104,9 @@ class Leveling(commands.Cog):
         assert guild is not None
         rows = await self.bot.db.get_leaderboard(guild.id, limit=10)
 
-        embed = discord.Embed(
-            title="🏆 XP Leaderboard",
-            color=discord.Color(0x5865F2),
-        )
-
         medals = ["🥇", "🥈", "🥉"]
         lines = []
+
         for i, row in enumerate(rows):
             member = guild.get_member(row["user_id"])
             name = member.display_name if member else f"Unknown ({row['user_id']})"
@@ -127,8 +115,12 @@ class Leveling(commands.Cog):
                 f"{medal} **{name}** — Level {row['level']} ({row['xp']:,} XP)"
             )
 
-        embed.description = "\n".join(lines) if lines else "No data yet — start chatting!"
-        embed.set_footer(text=f"Runi • XP System | Earn {XP_PER_MESSAGE} XP per message (cooldown: {int(XP_COOLDOWN_SECONDS)}s)")
+        embed = self.bot.embed_renderer.render("xp_leaderboard", {
+            "content": "\n".join(lines) if lines else "No data yet — start chatting!",
+            "xp_per_message": XP_PER_MESSAGE,
+            "cooldown": int(XP_COOLDOWN_SECONDS),
+        })
+
         await interaction.followup.send(embed=embed)
 
 
