@@ -1,5 +1,8 @@
-from .stats import TEMPLATES as STATS
-
+from runi.templates.general import TEMPLATES as GENERAL
+from runi.templates.stats import TEMPLATES as STATS
+from runi.templates.economy import TEMPLATES as ECONOMY
+from runi.templates.leveling import TEMPLATES as LEVELING
+from runi.templates.store import TEMPLATES as STORE
 
 def merge_templates(*dicts):
     merged = {}
@@ -14,5 +17,9 @@ def merge_templates(*dicts):
 
 
 templates = merge_templates(
-    STATS
+    GENERAL,
+    STATS,
+    ECONOMY,
+    LEVELING,
+    STORE
 )

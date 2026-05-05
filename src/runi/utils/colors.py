@@ -59,3 +59,9 @@ COLOR_MAP = {
     "onyx_embed": discord.Color.onyx_embed(),
     "light_embed": discord.Color.light_embed(),
 }
+
+
+def get_color(name: str) -> discord.Color:
+    return COLOR_MAP.get(name, discord.Color.blurple())
+
+
