@@ -1,15 +1,17 @@
+import asyncio
 import os
 import pkgutil
-import discord
-import asyncio
 
+import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
 from runi import cogs
+from runi.database import Database
 from runi.utils import log, colors
 from runi.utils.embed_renderer import EmbedRenderer
-from runi.database import Database
+from runi.utils.paths import BOT_DATA_DB_PATH
+
 
 def get_guild_ids() -> set[int]:
     env = os.environ.get("ENV", "dev").strip().lower()
@@ -36,7 +38,7 @@ class RuniClient(commands.Bot):
 
         self.guild_ids = guild_ids
         self.embed_renderer = EmbedRenderer()
-        self.db = Database("bot_data.db")
+        self.db = Database(str(BOT_DATA_DB_PATH))
         
     async def setup_hook(self):
         for module in pkgutil.walk_packages(cogs.__path__, cogs.__name__ + "."):
