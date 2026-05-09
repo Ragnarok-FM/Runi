@@ -1,10 +1,11 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from runi.main import RuniClient
+if TYPE_CHECKING:
+    from runi.main import RuniClient
 
 
 # Item type labels for display
@@ -20,14 +21,13 @@ class Store(commands.Cog):
         self.bot = bot
 
     # ── /store ─────────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="store", description="Browse the Runeshard store.")
-    async def store(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+    @commands.hybrid_command(name="store", description="Browse the Runeshard store.")
+    async def store(self, ctx: commands.Context):
+        await ctx.defer()
 
-        guild_id = interaction.guild_id
-        assert guild_id is not None
-        items = await self.bot.db.get_store_items(guild_id)
+        guild = ctx.guild
+        assert guild is not None
+        items = await self.bot.db.get_store_items(guild.id)
 
         description = (
             "The store is empty right now — check back later!"
@@ -55,19 +55,19 @@ class Store(commands.Cog):
 
                 embed.add_field(name=label, value="\n".join(lines), inline=False)
 
-        await interaction.followup.send(embed=embed)
+        await ctx.send(embed=embed)
 
     # ── /buy ───────────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="buy", description="Purchase an item from the store.")
+    @commands.guild_only()
+    @commands.hybrid_command(name="buy", description="Purchase an item from the store.")
     @app_commands.describe(item_id="The item ID shown in /store.")
-    async def buy(self, interaction: discord.Interaction, item_id: int):
-        await interaction.response.defer(ephemeral=True)
+    async def buy(self, ctx: commands.Context, item_id: int):
+        await ctx.defer(ephemeral=True)
 
-        guild = interaction.guild
+        guild = ctx.guild
         assert guild is not None
         result = await self.bot.db.purchase_item(
-            interaction.user.id, guild.id, item_id
+            ctx.author.id, guild.id, item_id
         )
 
         if not result["success"]:
@@ -90,7 +90,7 @@ class Store(commands.Cog):
             embed = self.bot.embed_renderer.render("store_purchase_failed", {
                 "description": desc
             })
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
         item = result["item"]
@@ -100,8 +100,8 @@ class Store(commands.Cog):
             role = guild.get_role(item["role_id"])
             if role:
                 try:
-                    assert isinstance(interaction.user, discord.Member)
-                    await interaction.user.add_roles(role, reason="Store purchase")
+                    assert isinstance(ctx.author, discord.Member)
+                    await ctx.author.add_roles(role, reason="Store purchase")
                 except discord.Forbidden:
                     pass  # Bot lacks permissions — purchased but role not assigned
 
@@ -110,17 +110,16 @@ class Store(commands.Cog):
             "price": item["price"],
             "balance": result["balance"]
         })
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed, ephemeral=True, delete_after=5)
 
     # ── /inventory ─────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="inventory", description="View your purchased items.")
-    async def inventory(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+    @commands.hybrid_command(name="inventory", description="View your purchased items.")
+    async def inventory(self, ctx: commands.Context):
+        await ctx.defer(ephemeral=True)
 
-        guild = interaction.guild
+        guild = ctx.guild
         assert guild is not None
-        items = await self.bot.db.get_inventory(interaction.user.id, guild.id)
+        items = await self.bot.db.get_inventory(ctx.author.id, guild.id)
 
         if not items:
             content = "Your inventory is empty — visit `/store` to get started!"
@@ -132,27 +131,27 @@ class Store(commands.Cog):
             content = "\n".join(lines)
 
         embed = self.bot.embed_renderer.render("inventory", {
-            "username": interaction.user.display_name,
+            "username": ctx.author.display_name,
             "content": content
         })
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed, ephemeral=True, delete_after=5)
 
     # ── Admin: /gift ──────────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="gift", description="Gift an item from your inventory to another user.")
+    @commands.guild_only()
+    @commands.hybrid_command(name="gift", description="Gift an item from your inventory to another user.")
+    @commands.has_permissions(administrator=True)
     @app_commands.describe(
         member="The user to gift the item to.",
         item_id="The item ID from your /inventory.",
     )
     @app_commands.default_permissions(administrator=True)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def gift(self, interaction: discord.Interaction, member: discord.Member, item_id: int):
-        await interaction.response.defer(ephemeral=True)
+    async def gift(self, ctx: commands.Context, member: discord.Member, item_id: int):
+        await ctx.defer(ephemeral=True)
 
-        guild = interaction.guild
+        guild = ctx.guild
         assert guild is not None
         result = await self.bot.db.transfer_item(
-            interaction.user.id, member.id, guild.id, item_id
+            ctx.author.id, member.id, guild.id, item_id
         )
 
         if result["reason"] == "self_transfer":
@@ -169,7 +168,7 @@ class Store(commands.Cog):
                 "title": data[0],
                 "description": data[1]
             })
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
         item = result["item"]
@@ -179,22 +178,23 @@ class Store(commands.Cog):
             role = guild.get_role(item["role_id"])
             if role:
                 try:
-                    assert isinstance(interaction.user, discord.Member)
-                    await interaction.user.remove_roles(role, reason="Item gifted away")
+                    assert isinstance(ctx.author, discord.Member)
+                    await ctx.author.remove_roles(role, reason="Item gifted away")
                     await member.add_roles(role, reason="Item received as gift")
                 except discord.Forbidden:
                     pass
 
         embed = self.bot.embed_renderer.render("store_gift_success", {
-            "sender": interaction.user.display_name,
+            "sender": ctx.author.display_name,
             "item": item["name"],
             "receiver": member.display_name
         })
-        await interaction.followup.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True, delete_after=5)
 
     # ── Admin: /additem ────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="additem", description="[Admin] Add an item to the store.")
+    @commands.guild_only()
+    @commands.hybrid_command(name="additem", description="[Admin] Add an item to the store.")
+    @commands.has_permissions(administrator=True)
     @app_commands.describe(
         name="Item name",
         description="Short description shown in the store",
@@ -207,22 +207,21 @@ class Store(commands.Cog):
         app_commands.Choice(name="Role / Colour", value="role"),
     ])
     @app_commands.default_permissions(administrator=True)
-    @app_commands.checks.has_permissions(administrator=True)
     async def additem(
         self,
-        interaction: discord.Interaction,
+        ctx: commands.Context,
         name: str,
         description: str,
         price: int,
         item_type: app_commands.Choice[str],
         role: Optional[discord.Role] = None,
     ):
-        guild_id = interaction.guild_id
-        assert guild_id is not None
+        guild = ctx.guild
+        assert guild is not None
 
         role_id = role.id if role else None
         item_id = await self.bot.db.add_store_item(
-            guild_id, name, description, price, item_type.value, role_id
+            guild.id, name, description, price, item_type.value, role_id
         )
         embed = self.bot.embed_renderer.render("store_add_item", {
             "name": name,
@@ -230,18 +229,18 @@ class Store(commands.Cog):
             "price": price,
         })
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed, ephemeral=True, delete_after=5)
 
     # ── Admin: /removeitem ─────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="removeitem", description="[Admin] Remove an item from the store.")
+    @commands.guild_only()
+    @commands.hybrid_command(name="removeitem", description="[Admin] Remove an item from the store.")
+    @commands.has_permissions(administrator=True)
     @app_commands.describe(item_id="The item ID to remove.")
     @app_commands.default_permissions(administrator=True)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def removeitem(self, interaction: discord.Interaction, item_id: int):
-        guild_id = interaction.guild_id
-        assert guild_id is not None
-        removed = await self.bot.db.remove_store_item(item_id, guild_id)
+    async def removeitem(self, ctx: commands.Context, item_id: int):
+        guild = ctx.guild
+        assert guild is not None
+        removed = await self.bot.db.remove_store_item(item_id, guild.id)
         if removed:
             embed = self.bot.embed_renderer.render("store_remove_item_success", {
                 "id": item_id
@@ -251,16 +250,16 @@ class Store(commands.Cog):
                 "id": item_id
             })
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed, ephemeral=True, delete_after=5)
 
     # ── Error handler ──────────────────────────────────────────────────────────
     @gift.error
     @additem.error
     @removeitem.error
-    async def admin_error(self, interaction: discord.Interaction, error):
+    async def admin_error(self, ctx: commands.Context, error):
         if isinstance(error, app_commands.MissingPermissions):
             embed = self.bot.embed_renderer.render("error_missing_admin_permissions", {})
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
 
 
 async def setup(bot: 'RuniClient'):

@@ -1,29 +1,31 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from runi.main import RuniClient
 from runi.config import XP_FOR_LEVEL, XP_PER_MESSAGE, XP_COOLDOWN_SECONDS
 
-# TODO: Use embed templates for all responses in this cog
+if TYPE_CHECKING:
+    from runi.main import RuniClient
+
+
 class Leveling(commands.Cog):
     def __init__(self, bot: 'RuniClient'):
         self.bot = bot
 
     # ── /profile ───────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="profile", description="View your full profile — level, XP, Runes and more.")
+    @commands.guild_only()
+    @commands.hybrid_command(name="profile", description="View your full profile — level, XP, Runes and more.")
     @app_commands.describe(member="The member to view (leave blank for yourself).")
-    async def profile(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
-        await interaction.response.defer()
-        target = member or interaction.user
-        guild_id = interaction.guild_id
-        assert guild_id is not None
+    async def profile(self, ctx: commands.Context, member: Optional[discord.Member] = None):
+        await ctx.defer()
+        target = member or ctx.author
+        guild = ctx.guild
+        assert guild is not None
 
-        user = await self.bot.db.get_user(target.id, guild_id)
-        inventory = await self.bot.db.get_inventory(target.id, guild_id)
+        user = await self.bot.db.get_user(target.id, guild.id)
+        inventory = await self.bot.db.get_inventory(target.id, guild.id)
 
         level = user["level"]
         xp = user["xp"]
@@ -57,17 +59,18 @@ class Leveling(commands.Cog):
                 item_list += f" + {len(inventory) - 5} more"
             embed.add_field(name="Inventory", value=item_list, inline=False)
 
-        await interaction.followup.send(embed=embed)
+        await ctx.send(embed=embed)
 
     # ── /rank ──────────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="rank", description="Check your (or another user's) level and XP.")
+    @commands.guild_only()
+    @commands.hybrid_command(name="rank", description="Check your (or another user's) level and XP.")
     @app_commands.describe(member="The member to check (leave blank for yourself).")
-    async def rank(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
-        target = member or interaction.user
-        guild_id = interaction.guild_id
-        assert guild_id is not None
-        user = await self.bot.db.get_user(target.id, guild_id)
+    async def rank(self, ctx: commands.Context, member: Optional[discord.Member] = None):
+        target = member or ctx.author
+
+        guild = ctx.guild
+        assert guild is not None
+        user = await self.bot.db.get_user(target.id, guild.id)
 
         level = user["level"]
         xp = user["xp"]
@@ -92,15 +95,15 @@ class Leveling(commands.Cog):
             "xp_span": xp_span,
         })
 
-        await interaction.response.send_message(embed=embed)
+        await ctx.send(embed=embed)
 
     # ── /leaderboard ───────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="leaderboard", description="See the top members by level on this server.")
-    async def leaderboard(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+    @commands.guild_only()
+    @commands.hybrid_command(name="leaderboard", description="See the top members by level on this server.")
+    async def leaderboard(self, ctx: commands.Context):
+        await ctx.defer()
 
-        guild = interaction.guild;
+        guild = ctx.guild
         assert guild is not None
         rows = await self.bot.db.get_leaderboard(guild.id, limit=10)
 
@@ -121,7 +124,7 @@ class Leveling(commands.Cog):
             "cooldown": int(XP_COOLDOWN_SECONDS),
         })
 
-        await interaction.followup.send(embed=embed)
+        await ctx.send(embed=embed)
 
 
 async def setup(bot: 'RuniClient'):

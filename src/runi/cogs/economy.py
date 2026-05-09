@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import discord
 from discord import app_commands
@@ -10,7 +10,9 @@ from runi.config import (
     DAILY_STREAK_BONUS,
     DAILY_STREAK_MAX,
 )
-from runi.main import RuniClient
+
+if TYPE_CHECKING:
+    from runi.main import RuniClient
 
 
 def _fmt_time(seconds: float) -> str:
@@ -37,17 +39,17 @@ class Economy(commands.Cog):
         return self.bot.cogs  # accessed via bot reference below
 
     # ── /work ──────────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="work", description="Work to earn Runes (once per hour).")
-    async def work(self, interaction: discord.Interaction):
-        guild_id = interaction.guild_id
-        assert guild_id is not None
-        result = await self.bot.db.do_work(interaction.user.id, guild_id)
+    @commands.guild_only()
+    @commands.hybrid_command(name="work", description="Work to earn Runes (once per hour).")
+    async def work(self, ctx: commands.Context):
+        guild = ctx.guild
+        assert guild is not None
+        result = await self.bot.db.do_work(ctx.author.id, guild.id)
 
         if not result["success"]:
             wait = _fmt_time(result["wait_seconds"])
             embed = self.bot.embed_renderer.render("work_cooldown", {"wait": wait})
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
         embed = self.bot.embed_renderer.render("work_success", {
@@ -55,20 +57,20 @@ class Economy(commands.Cog):
             "balance": result["balance"],
             "cooldown": _fmt_time(WORK_COOLDOWN_SECONDS),
         })
-        await interaction.response.send_message(embed=embed)
+        await ctx.send(embed=embed)
 
     # ── /daily ─────────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="daily", description="Claim your daily Runeshard reward.")
-    async def daily(self, interaction: discord.Interaction):
-        guild_id = interaction.guild_id
-        assert guild_id is not None
-        result = await self.bot.db.do_daily(interaction.user.id, guild_id)
+    @commands.guild_only()
+    @commands.hybrid_command(name="daily", description="Claim your daily Runeshard reward.")
+    async def daily(self, ctx: commands.Context):
+        guild = ctx.guild
+        assert guild is not None
+        result = await self.bot.db.do_daily(ctx.author.id, guild.id)
 
         if not result["success"]:
             wait = _fmt_time(result["wait_seconds"])
             embed = self.bot.embed_renderer.render("daily_already_claimed", {"wait": wait})
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
         streak = result["streak"]
@@ -95,18 +97,18 @@ class Economy(commands.Cog):
             "footer": footer,
         })
 
-        await interaction.response.send_message(embed=embed)
+        await ctx.send(embed=embed)
 
     # ── /balance ───────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="balance", description="Check your (or another user's) Runeshard balance.")
+    @commands.guild_only()
+    @commands.hybrid_command(name="balance", description="Check your (or another user's) Runeshard balance.")
     @app_commands.describe(member="The member to check (leave blank for yourself).")
-    async def balance(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
-        target = member or interaction.user
+    async def balance(self, ctx: commands.Context, member: Optional[discord.Member] = None):
+        target = member or ctx.author
 
-        guild_id = interaction.guild_id
-        assert guild_id is not None
-        user = await self.bot.db.get_user(target.id, guild_id)
+        guild = ctx.guild
+        assert guild is not None
+        user = await self.bot.db.get_user(target.id, guild.id)
 
         embed = self.bot.embed_renderer.render("balance", {
             "username": target.display_name,
@@ -115,37 +117,33 @@ class Economy(commands.Cog):
             "avatar": target.display_avatar.url,
         })
 
-        await interaction.response.send_message(embed=embed)
+        await ctx.send(embed=embed)
 
     # ── /coinflip ──────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="coinflip", description="Bet your Runes on a coin flip!")
-    @app_commands.describe(
-        choice="Pick heads or tails.",
-        bet="How many Runes to bet.",
-    )
+    @commands.guild_only()
+    @commands.hybrid_command(name="coinflip", description="Bet your Runes on a coin flip!")
+    @app_commands.describe(choice="Pick heads or tails.", bet="How many Runes to bet.")
     @app_commands.choices(choice=[
         app_commands.Choice(name="Heads", value="heads"),
         app_commands.Choice(name="Tails", value="tails"),
     ])
-    async def coinflip(self, interaction: discord.Interaction, choice: app_commands.Choice[str], bet: int):
+    async def coinflip(self, ctx: commands.Context, choice: app_commands.Choice[str], bet: int):
         if bet <= 0:
             embed = self.bot.embed_renderer.render("coinflip_invalid_bet", {})
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
-        guild_id = interaction.guild_id
-        assert guild_id is not None
+        guild = ctx.guild
+        assert guild is not None
 
-        result = await self.bot.db.coinflip(interaction.user.id, guild_id, bet, choice.value)
+        result = await self.bot.db.coinflip(ctx.author.id, guild.id, bet, choice.value)
 
         if not result["success"]:
             embed = self.bot.embed_renderer.render("error_insufficient_funds", {
                 "balance": result["balance"]
             })
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
 
-        coin_emoji = "🪙"
         result_label = result["result"].capitalize()
 
         outcome = "You Won!" if result["won"] else "You Lost!"
@@ -163,15 +161,15 @@ class Economy(commands.Cog):
             "balance": result["balance"]
         })
 
-        await interaction.response.send_message(embed=embed)
+        await ctx.send(embed=embed)
 
     # ── /richlist ──────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="richlist", description="See the wealthiest members on this server.")
-    async def richlist(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+    @commands.guild_only()
+    @commands.hybrid_command(name="richlist", description="See the wealthiest members on this server.")
+    async def richlist(self, ctx: commands.Context):
+        await ctx.defer()
 
-        guild = interaction.guild
+        guild = ctx.guild
         assert guild is not None
 
         rows = await self.bot.db.get_rich_list(guild.id, limit=10)
@@ -191,54 +189,55 @@ class Economy(commands.Cog):
             "content": content
         })
 
-        await interaction.followup.send(embed=embed)
+        await ctx.send(embed=embed)
 
     # ── /give ──────────────────────────────────────────────────────────────────
-    @app_commands.guild_only()
-    @app_commands.command(name="give", description="Give some of your Runes to another user.")
+    @commands.guild_only()
+    @commands.hybrid_command(name="give", description="Give some of your Runes to another user.")
+    @commands.has_permissions(administrator=True)
     @app_commands.describe(member="The user to give Runes to.", amount="How many Runes to give.")
     @app_commands.default_permissions(administrator=True)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def give(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+    async def give(self, ctx: commands.Context, member: discord.Member, amount: int):
         if amount <= 0:
             embed = self.bot.embed_renderer.render("give_invalid_amount", {})
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
-        guild_id = interaction.guild_id
-        assert guild_id is not None
+        guild = ctx.guild
+        assert guild is not None
 
         result = await self.bot.db.transfer_runes(
-            interaction.user.id, member.id, guild_id, amount
+            ctx.author.id, member.id, guild.id, amount
         )
 
         if result["reason"] == "self_transfer":
             embed = self.bot.embed_renderer.render("give_self_transfer", {})
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
         if result["reason"] == "insufficient_funds":
             embed = self.bot.embed_renderer.render("error_insufficient_funds", {
                 "balance": result["balance"]
             })
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
         embed = self.bot.embed_renderer.render("give_success", {
-            "sender": interaction.user.display_name,
+            "sender": ctx.author.display_name,
             "receiver": member.display_name,
             "amount": amount,
             "balance": result["from_balance"]
         })
 
-        await interaction.response.send_message(embed=embed)
+        await ctx.send(embed=embed)
 
     # ── Error handler ──────────────────────────────────────────────────────────
     @give.error
-    async def admin_error(self, interaction: discord.Interaction, error):
-        if isinstance(error, app_commands.MissingPermissions):
+    async def admin_error(self, ctx: commands.Context, error):
+        error = getattr(error, "original", error)
+        if isinstance(error, commands.MissingPermissions):
             embed = self.bot.embed_renderer.render("error_missing_admin_permissions", {})
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
 
 async def setup(bot: 'RuniClient'):
     await bot.add_cog(Economy(bot))
