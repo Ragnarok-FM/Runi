@@ -1,4 +1,4 @@
-TEMPLATES = {
+EMBEDS = {
     "work_success": {
         "title": "⚒️ Work Complete",
         "description": (

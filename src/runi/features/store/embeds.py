@@ -1,4 +1,4 @@
-TEMPLATES = {
+EMBEDS = {
     "store": {
         "title": "🛒 Runeshard Store",
         "description": "{description}",

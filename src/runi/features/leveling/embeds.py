@@ -1,4 +1,4 @@
-TEMPLATES = {
+EMBEDS = {
     "profile": {
         "title": "🧙 {username}'s Profile",
         "thumbnail": "{avatar}",

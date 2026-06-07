@@ -2,7 +2,7 @@ import discord
 
 from runi.utils import colors
 from runi.utils.text_utils import truncate, SafeDict
-from runi.templates import templates
+from runi.features import embeds
 
 
 MAX_TITLE = 256
@@ -18,10 +18,10 @@ class EmbedRenderer:
         return template.format_map(SafeDict(data))
 
     def render(self, template_name: str, data: dict) -> discord.Embed:
-        if template_name not in templates:
+        if template_name not in embeds:
             raise ValueError(f"Template '{template_name}' not found")
 
-        template = templates[template_name]
+        template = embeds[template_name]
 
         title = truncate(self._format(template.get("title"), data), MAX_TITLE)
         description = truncate(self._format(template.get("description"), data), MAX_DESCRIPTION)
