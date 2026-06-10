@@ -194,7 +194,7 @@ class Economy(commands.Cog):
 
     # ── /give ──────────────────────────────────────────────────────────────────
     @commands.guild_only()
-    @commands.hybrid_command(name="give", description="Give some of your Runes to another user.")
+    @commands.hybrid_command(name="give", description="Give Runes to another user (admin-only).")
     @commands.has_permissions(administrator=True)
     @app_commands.describe(member="The user to give Runes to.", amount="How many Runes to give.")
     @app_commands.default_permissions(administrator=True)
@@ -207,33 +207,95 @@ class Economy(commands.Cog):
         guild = ctx.guild
         assert guild is not None
 
-        result = await self.bot.db.transfer_runes(
-            ctx.author.id, member.id, guild.id, amount
-        )
+        result = await self.bot.db.add_runes(member.id, guild.id, amount)
 
-        if result["reason"] == "self_transfer":
-            embed = self.bot.embed_renderer.render("give_self_transfer", {})
+        embed = self.bot.embed_renderer.render("give_success", {
+            "receiver": member.display_name,
+            "amount": amount,
+            "balance": result["balance"]
+        })
+
+        await ctx.send(embed=embed)
+
+    # ── /giveall ───────────────────────────────────────────────────────────────
+    @commands.guild_only()
+    @commands.hybrid_command(name="giveall", description="Give Runes to all guild members or a specific role (admin-only).")
+    @commands.has_permissions(administrator=True)
+    @app_commands.describe(amount="How many Runes to give to each member.", role="Optional: Give Runes only to members with this role.")
+    @app_commands.default_permissions(administrator=True)
+    async def giveall(self, ctx: commands.Context, amount: int, role: discord.Role = None):
+        if amount <= 0:
+            embed = self.bot.embed_renderer.render("give_invalid_amount", {})
             await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
-        if result["reason"] == "insufficient_funds":
-            embed = self.bot.embed_renderer.render("error_insufficient_funds", {
-                "balance": result["balance"]
+        await ctx.defer()
+
+        guild = ctx.guild
+        assert guild is not None
+
+        if role:
+            member_ids = [member.id for member in role.members if not member.bot]
+            role_name = role.name
+        else:
+            member_ids = [member.id for member in guild.members if not member.bot]
+            role_name = "all members"
+
+        if not member_ids:
+            embed = self.bot.embed_renderer.render("giveall_no_members", {
+                "target": role_name
             })
             await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
-        embed = self.bot.embed_renderer.render("give_success", {
-            "sender": ctx.author.display_name,
-            "receiver": member.display_name,
+        result = await self.bot.db.add_runes_to_all(guild.id, member_ids, amount)
+
+        embed = self.bot.embed_renderer.render("giveall_success", {
             "amount": amount,
-            "balance": result["from_balance"]
+            "total_members": result["total_members"],
+            "total_distributed": result["total_distributed"],
+            "target": role_name
+        })
+
+        await ctx.send(embed=embed)
+
+    # ── /take ──────────────────────────────────────────────────────────────────
+    @commands.guild_only()
+    @commands.hybrid_command(name="take", description="Take Runes from a user (admin-only).")
+    @commands.has_permissions(administrator=True)
+    @app_commands.describe(member="The user to take Runes from.", amount="How many Runes to take.")
+    @app_commands.default_permissions(administrator=True)
+    async def take(self, ctx: commands.Context, member: discord.Member, amount: int):
+        if amount <= 0:
+            embed = self.bot.embed_renderer.render("take_invalid_amount", {})
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return
+
+        guild = ctx.guild
+        assert guild is not None
+
+        result = await self.bot.db.remove_runes(member.id, guild.id, amount)
+
+        if not result["success"] and result["reason"] == "insufficient_funds":
+            embed = self.bot.embed_renderer.render("take_insufficient_funds", {
+                "balance": result["balance"],
+                "member": member.display_name
+            })
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return
+
+        embed = self.bot.embed_renderer.render("take_success", {
+            "member": member.display_name,
+            "amount": amount,
+            "balance": result["balance"]
         })
 
         await ctx.send(embed=embed)
 
     # ── Error handler ──────────────────────────────────────────────────────────
     @give.error
+    @giveall.error
+    @take.error
     async def admin_error(self, ctx: commands.Context, error):
         error = getattr(error, "original", error)
         if isinstance(error, commands.MissingPermissions):
