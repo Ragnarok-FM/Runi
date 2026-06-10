@@ -31,5 +31,13 @@ EMBEDS = {
         "description": "{content}",
         "color": "blurple",
         "footer": "Runi • XP System | Earn {xp_per_message} XP per message (cooldown: {cooldown}s)"
+    },
+
+    "level_up": {
+        "title": "⚡ Level Up!",
+        "description": "**{username}** has reached **Level {new_level}**!",
+        "thumbnail": "{avatar}",
+        "color": "red",
+        "footer": "Runi • XP System"
     }
 }

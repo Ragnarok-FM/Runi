@@ -5,6 +5,7 @@ import pkgutil
 from pathlib import Path
 
 import discord
+from discord import Message
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -85,33 +86,21 @@ class RuniClient(commands.Bot):
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandNotFound):
             return
+
+        log.error(error);
         raise error
 
-    async def on_message(self, message):
+    async def on_message(self, message: Message):
         if message.author.bot:
             return
         
         # TODO: Move this to a cog and use embed templates for embed responses
-        content = message.content.lower().strip()
-        if "good morning" in content:
-            await message.channel.send(f"And good morning to you too, my fellow descendant!")
-        elif "hello" in content:
-            await message.channel.send(f"Greetings, peasant!")
-
-        result = await self.db.add_xp(message.author.id, message.guild.id)
-
-        if result["leveled_up"]:
-            embed = discord.Embed(
-                title="⚡ Level Up!",
-                description=(
-                    f"**{message.author.display_name}** has reached **Level {result['new_level']}**!"
-                ),
-                color=colors.get_color("red")
-            )
-            embed.set_thumbnail(url=message.author.display_avatar.url)
-            embed.set_footer(text="Runi • XP System")
-            await message.channel.send(embed=embed)
-
+        if self.user.mentioned_in(message):
+            content = message.content.lower().strip()
+            if "good morning" in content:
+                await message.channel.send(f"And good morning to you too, {message.author.mention}!")
+            elif "hello" in content:
+                await message.channel.send(f"Hello {message.author.mention}!")
 
         await self.process_commands(message)
 
@@ -127,13 +116,17 @@ async def main():
     guild_ids = get_guild_ids(env)
 
     client = RuniClient(guild_ids)
-    await client.start(token.strip())
+    try:
+        await client.start(token.strip())
+    except KeyboardInterrupt:
+        log.info("Shutting down bot...")
+        await client.close()
 
 def run():
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Shutting down bot...")
+        log.info("Shutting down bot...")
 
 if __name__ == "__main__":
     run()

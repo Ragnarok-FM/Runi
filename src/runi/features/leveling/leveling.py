@@ -1,10 +1,11 @@
 from typing import Optional, TYPE_CHECKING
 
 import discord
-from discord import app_commands
+from discord import Message, app_commands
 from discord.ext import commands
 
 from runi.config import XP_FOR_LEVEL, XP_PER_MESSAGE, XP_COOLDOWN_SECONDS
+from runi.utils import log
 
 if TYPE_CHECKING:
     from runi.main import RuniClient
@@ -13,6 +14,33 @@ if TYPE_CHECKING:
 class Leveling(commands.Cog):
     def __init__(self, bot: 'RuniClient'):
         self.bot = bot
+        self.role_mapping = {
+            1: "Iron Soldier",
+            10: "Raidborn Warrior",
+            20: "Storm Champion",
+            40: "Runeforge Elite",
+            60: "Ascendant of Runi",
+        }
+
+    async def ensure_tier_roles(self, guild: discord.Guild):
+        for lvl, role_name in sorted(self.role_mapping.items(), reverse=True):
+            existing_role = discord.utils.get(guild.roles, name=role_name)
+            if not existing_role:
+                try:
+                    await guild.create_role(
+                        name=role_name, 
+                        reason="Setting up level tier roles",
+                        mentionable=False,
+                        hoist=True
+                    )
+                except discord.Forbidden:
+                    log.error(f"Bot lacks permissions to create role '{role_name}' on guild {guild.name}")
+                except Exception as e:
+                    log.error(f"Failed to create role '{role_name}' on guild {guild.name}: {e}")
+
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild):
+        await self.ensure_tier_roles(guild)
 
     # ── /profile ───────────────────────────────────────────────────────────────
     @commands.guild_only()
@@ -126,6 +154,60 @@ class Leveling(commands.Cog):
 
         await ctx.send(embed=embed)
 
+    # ── Automatic Role Assignment ──────────────────────────────────────────────
+    async def update_member_level_role(self, member: discord.Member, new_level: int):
+        """
+        Checks the member's new level, assigns the correct clan role, and removes obsolete tier roles.
+        Creates roles if they don't exist on the server.
+        """
+        guild = member.guild
+
+        await self.ensure_tier_roles(guild)
+
+        target_role_name = None
+        for level, role_name in sorted(self.role_mapping.items()):
+            if new_level >= level:
+                target_role_name = role_name
+
+        if not target_role_name:
+            return
+
+        target_role = discord.utils.get(guild.roles, name=target_role_name)
+        if not target_role:
+            await self._ensure_tier_roles(guild)
+
+            target_role = discord.utils.get(guild.roles, name=target_role_name)
+            if not target_role:
+                log.error(f"Failed to find or create role '{target_role_name}'")
+                return
+
+        try:
+            if target_role not in member.roles:
+                await member.add_roles(target_role, reason=f"Reached level {new_level}")
+
+            roles_to_remove = [discord.utils.get(guild.roles, name=role_name) for role_name in self.role_mapping.values() if role_name != target_role_name]
+            roles_to_remove = [role for role in roles_to_remove if role and role in member.roles]
+            if roles_to_remove:
+                await member.remove_roles(*roles_to_remove, reason=f"Level tier update ({new_level})")
+        except discord.Forbidden:
+            log.error(f"Cannot modify roles for {member} (permission or hierarchy issue)")
+        except discord.HTTPException as exc:
+            log.error(f"Failed updating roles for {member}: {exc}")
+
+    @commands.Cog.listener()
+    async def on_message(self, message: Message):
+        if message.author.bot:
+            return
+        
+        result = await self.bot.db.add_xp(message.author.id, message.guild.id)
+        if result["leveled_up"]:
+            embed = self.bot.embed_renderer.render("level_up", {
+                "username": message.author.display_name,
+                "new_level": result["new_level"],
+                "avatar": message.author.display_avatar.url
+            })
+            await message.channel.send(embed=embed)
+            await self.update_member_level_role(message.author, result["new_level"])
 
 async def setup(bot: 'RuniClient'):
     await bot.add_cog(Leveling(bot))

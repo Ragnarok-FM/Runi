@@ -143,6 +143,7 @@ class Economy(commands.Cog):
                 "balance": result["balance"]
             })
             await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return;
 
         result_label = result["result"].capitalize()
 

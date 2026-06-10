@@ -34,6 +34,7 @@ htmlcov/
 .env.*
 
 # IDE / editor files
+.vs/
 .vscode/
 .idea/
 *.suo

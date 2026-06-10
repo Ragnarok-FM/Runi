@@ -1,5 +1,6 @@
 import aiosqlite
 import time
+from pathlib import Path
 
 from runi.config import XP_PER_MESSAGE, XP_COOLDOWN_SECONDS, XP_FOR_LEVEL
 
@@ -7,6 +8,7 @@ from runi.config import XP_PER_MESSAGE, XP_COOLDOWN_SECONDS, XP_FOR_LEVEL
 class Database:
     def __init__(self, path: str):
         self.path = path
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
 
     # ── Schema ─────────────────────────────────────────────────────────────────
     async def init(self):
