@@ -1,22 +1,28 @@
 import asyncio
-import importlib
 import os
 import pkgutil
-from pathlib import Path
 
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from runi import features
+from runi import cogs
 from runi.database import Database
 from runi.utils import log, colors
 from runi.utils.embed_renderer import EmbedRenderer
 from runi.utils.paths import BOT_DATA_DB_PATH
 
 
-def get_guild_ids(env: str = "DEV") -> set[int]:
-    guild_id = os.environ.get(f"GUILD_ID_{env.upper()}")
+def get_guild_ids() -> set[int]:
+    env = os.environ.get("ENV", "dev").strip().lower()
+
+    if env == "dev":
+        guild_id = os.environ.get("GUILD_ID_DEV")
+    elif env == "prod":
+        guild_id = os.environ.get("GUILD_ID_PROD")
+    else:
+        raise RuntimeError(f"Invalid ENV value: {env}")
+
     if not guild_id:
         raise RuntimeError(f"Guild ID not set for ENV={env}")
 
@@ -35,34 +41,11 @@ class RuniClient(commands.Bot):
         self.db = Database(str(BOT_DATA_DB_PATH))
         
     async def setup_hook(self):
-        features_root = Path(features.__path__[0])
-
-        for feature_dir in features_root.iterdir():
-            if not feature_dir.is_dir():
+        for module in pkgutil.walk_packages(cogs.__path__, cogs.__name__ + "."):
+            if module.ispkg:
                 continue
 
-            pkg_name = f"{features.__name__}.{feature_dir.name}"
-            for _, module_name, ispkg in pkgutil.iter_modules([str(feature_dir)], prefix=f"{pkg_name}."):
-                if ispkg:
-                    continue
-                
-                if module_name.rsplit('.', 1)[1].startswith("_"):
-                    continue
-
-                try:
-                    module = importlib.import_module(module_name)
-                except Exception as e:
-                    log.error(f"Failed to import feature module {module_name}: {e}")
-                    continue
-
-                if not hasattr(module, "setup"):
-                    continue
-
-                try:
-                    await self.load_extension(module_name)
-                    log.info(f"Loaded feature extension {module_name}.")
-                except Exception as e:
-                    log.error(f"Failed to load feature extension {module_name}: {e}")
+            await self.load_extension(module.name)
 
         for guild_id in self.guild_ids:
             guild = discord.Object(id=guild_id)
@@ -91,44 +74,48 @@ class RuniClient(commands.Bot):
         if message.author.bot:
             return
         
-        # TODO: Move this to a cog and use embed templates for embed responses
-        content = message.content.lower().strip()
-        if "good morning" in content:
-            await message.channel.send(f"And good morning to you too, my fellow descendant!")
-        elif "hello" in content:
-            await message.channel.send(f"Greetings, peasant!")
+       # TODO: Move this to a cog and use embed templates for responses
+        if not message.author.bot and self.user.mentioned_in(message):
+            content = message.content.lower().strip()
+            if "good morning" in content:
+                await message.channel.send(f"And good morning to you too, {message.author.mention}!")
+            elif "hello" in content:
+                await message.channel.send(f"Hello {message.author.mention}!")
 
-        result = await self.db.add_xp(message.author.id, message.guild.id)
+        # XP system runs as usual
+        if not message.author.bot:
+            result = await self.db.add_xp(message.author.id, message.guild.id)
 
-        if result["leveled_up"]:
-            embed = discord.Embed(
-                title="⚡ Level Up!",
-                description=(
-                    f"**{message.author.display_name}** has reached **Level {result['new_level']}**!"
-                ),
-                color=colors.get_color("red")
-            )
-            embed.set_thumbnail(url=message.author.display_avatar.url)
-            embed.set_footer(text="Runi • XP System")
-            await message.channel.send(embed=embed)
+            if result["leveled_up"]:
+                embed = discord.Embed(
+                    title="⚡ Level Up!",
+                    description=(
+                        f"**{message.author.display_name}** has reached **Level {result['new_level']}**!"
+                    ),
+                    color=colors.get_color("red")
+                )
+                embed.set_thumbnail(url=message.author.display_avatar.url)
+                embed.set_footer(text="Runi • XP System")
+                await message.channel.send(embed=embed)
 
-
-        await self.process_commands(message)
+        # Trigger automatic role update
+        leveling_cog = self.get_cog("Leveling")
+        if leveling_cog:
+            lvl = result["new_level"]
+            await leveling_cog.update_member_level_role(message.author, lvl)
 
 
 async def main():
     load_dotenv()
 
-    env = os.environ.get("ENV", "DEV").strip()
-    token = os.environ.get(f"DISCORD_TOKEN_{env.upper()}")
+    token = os.environ.get("DISCORD_TOKEN")
     if not token or not token.strip():
-        raise RuntimeError(f"DISCORD_TOKEN_{env.upper()} environment variable not set.")
+        raise RuntimeError("DISCORD_TOKEN environment variable not set.")
 
-    guild_ids = get_guild_ids(env)
+    guild_ids = get_guild_ids()
 
     client = RuniClient(guild_ids)
     await client.start(token.strip())
-
 def run():
     try:
         asyncio.run(main())
