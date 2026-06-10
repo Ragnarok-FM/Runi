@@ -34,7 +34,7 @@ class Ascension(commands.Cog):
     async def ascension(self, ctx):
         pass
 
-    @ascension.command(name="clockwinders", description="Calculate the number of Clockwinders needed to reach a 7.2% Legendary chance.")
+    @ascension.command(name="mounts", description="Calculate the number of Clockwinders needed to reach a 7.2% Legendary chance.")
     @app_commands.describe(discount="Discount percentage", drop="Extra drop chance")
     @app_commands.choices(
         discount=[app_commands.Choice(name=str(i), value=i) for i in range(1, 26)],
@@ -48,7 +48,7 @@ class Ascension(commands.Cog):
             f"-# {discount}% discount • {drop}% drop chance"
         )
 
-    @ascension.command(name="eggshells", description="Calculate the number of Eggshells needed to reach a 7.2% Legendary chance.")
+    @ascension.command(name="pets", description="Calculate the number of Eggshells needed to reach a 7.2% Legendary chance.")
     @app_commands.describe(drop="Extra drop chance")
     @app_commands.choices(
         drop=[app_commands.Choice(name=str(i), value=i) for i in range(2, 51, 2)],
@@ -61,7 +61,7 @@ class Ascension(commands.Cog):
             f"-# {drop}% drop chance"
         )
 
-    @ascension.command(name="skilltickets", description="Calculate the number of Skill Tickets needed to reach a 2% Legendary chance.")
+    @ascension.command(name="skills", description="Calculate the number of Skill Tickets needed to reach a 2% Legendary chance.")
     @app_commands.describe(discount="Discount percentage")
     @app_commands.choices(
         discount=[app_commands.Choice(name=str(i), value=i) for i in range(1, 26)],
