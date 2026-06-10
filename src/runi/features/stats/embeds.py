@@ -1,4 +1,4 @@
-TEMPLATES = {
+EMBEDS = {
     "max_substats": {
         "title": "Max substats",
         "description": (

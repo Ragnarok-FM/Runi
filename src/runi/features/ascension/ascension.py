@@ -1,10 +1,17 @@
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from discord import app_commands
 from discord.ext import commands
 
-from runi.services.ascension.ascension_table import AscensionTable
-from runi.utils.paths import CLOCKWINDERS_CSV, EGGSHELLS_CSV, SKILL_TICKETS_CSV
+from runi.features.ascension.ascension_table import AscensionTable
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+
+CLOCKWINDERS_CSV = DATA_DIR / "clockwinders.csv"
+EGGSHELLS_CSV = DATA_DIR / "eggshells.csv"
+SKILL_TICKETS_CSV = DATA_DIR / "skill_tickets.csv"
 
 if TYPE_CHECKING:
     from runi.main import RuniClient
@@ -54,7 +61,7 @@ class Ascension(commands.Cog):
             f"-# {drop}% drop chance"
         )
 
-    @ascension.command(name="skilltickets", description="Calculate the number of Skill Tickets needed to reach a 5.23% Legendary chance.")
+    @ascension.command(name="skilltickets", description="Calculate the number of Skill Tickets needed to reach a 2% Legendary chance.")
     @app_commands.describe(discount="Discount percentage")
     @app_commands.choices(
         discount=[app_commands.Choice(name=str(i), value=i) for i in range(1, 26)],
@@ -63,7 +70,7 @@ class Ascension(commands.Cog):
         value = self.skill_tickets_table.get(discount)
 
         await ctx.send(
-            f"**Skill Tickets for 5.23% Legendary:** {value:,} <:FM_SkillTicket:1502034730831446159>\n"
+            f"**Skill Tickets for 2% Legendary:** {value:,} <:FM_SkillTicket:1502034730831446159>\n"
             f"-# {discount}% discount"
         )
 
