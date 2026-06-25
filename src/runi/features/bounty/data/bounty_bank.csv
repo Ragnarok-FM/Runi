@@ -1,0 +1,19 @@
+id,rarity,description,type,target
+1,common,Send 50 messages in any channel,message_count,50
+2,common,Send 30 messages in any channel,message_count,30
+3,common,Use any bot command 5 times,command_count,5
+4,common,Use any bot command 10 times,command_count,10
+5,common,Use the /work command 3 times,work_count,3
+6,common,Earn Runes from /work twice,work_count,2
+7,rare,Send 100 messages in any channel,message_count,100
+8,rare,Use any bot command 20 times,command_count,20
+9,rare,Use the /work command 5 times,work_count,5
+10,rare,Claim your /daily reward today,daily_count,1
+11,rare,Win a /coinflip bet,coinflip_win,1
+12,rare,Win 3 /coinflip bets,coinflip_win,3
+13,epic,Send 200 messages in any channel,message_count,200
+14,epic,Use the /work command 8 times,work_count,8
+15,epic,Win 5 /coinflip bets,coinflip_win,5
+16,epic,Use any bot command 40 times,command_count,40
+17,legendary,Send 500 messages in any channel,message_count,500
+18,legendary,Win 10 /coinflip bets,coinflip_win,10

@@ -51,6 +51,29 @@ class Database:
                     FOREIGN KEY (item_id) REFERENCES store_items(item_id)
                 )
             """)
+            # One row per bounty slot assigned to a user on a given day.
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_bounties (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id         INTEGER NOT NULL,
+                    guild_id        INTEGER NOT NULL,
+                    date            TEXT    NOT NULL,
+                    bounty_id       INTEGER NOT NULL,
+                    progress        INTEGER NOT NULL DEFAULT 0,
+                    reward_claimed  INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE (user_id, guild_id, date, bounty_id)
+                )
+            """)
+            # One row per user per day — tracks whether the full-house bonus was paid.
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_bounty_bonus (
+                    user_id     INTEGER NOT NULL,
+                    guild_id    INTEGER NOT NULL,
+                    date        TEXT    NOT NULL,
+                    bonus_paid  INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (user_id, guild_id, date)
+                )
+            """)
             await db.commit()
 
     # ── Internal helper ────────────────────────────────────────────────────────
@@ -479,9 +502,9 @@ class Database:
                 (guild_id, name, description, price, item_type, role_id),
             )
             await db.commit()
-            
+
             item_id = cur.lastrowid
-            if item_id is None: 
+            if item_id is None:
                 raise RuntimeError("Failed to insert store item")
             return item_id
 
@@ -494,3 +517,171 @@ class Database:
             )
             await db.commit()
             return cur.rowcount > 0
+
+    # ── Bounty ─────────────────────────────────────────────────────────────────
+
+    async def assign_bounties(
+        self,
+        user_id: int,
+        guild_id: int,
+        date: str,
+        definitions,  # list[BountyDefinition]
+    ) -> None:
+        """
+        Insert the 3 rolled bounty slots for a user/guild/date combination.
+
+        Uses INSERT OR IGNORE so re-calling on the same day is a safe no-op
+        (guards against a race condition from two simultaneous /bounty calls).
+        """
+        async with aiosqlite.connect(self.path) as db:
+            await self._ensure_user(db, user_id, guild_id)
+            for defn in definitions:
+                await db.execute(
+                    """
+                    INSERT OR IGNORE INTO user_bounties
+                        (user_id, guild_id, date, bounty_id, progress, reward_claimed)
+                    VALUES (?, ?, ?, ?, 0, 0)
+                    """,
+                    (user_id, guild_id, date, defn.id),
+                )
+            await db.commit()
+
+    async def get_user_bounties(
+        self,
+        user_id: int,
+        guild_id: int,
+        date: str,
+    ) -> list[dict]:
+        """
+        Return all bounty rows for a user on the given date.
+
+        Returns an empty list if the user has not rolled bounties yet today.
+        Each dict contains: bounty_id, progress, reward_claimed.
+        """
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                """
+                SELECT bounty_id, progress, reward_claimed
+                FROM   user_bounties
+                WHERE  user_id  = ?
+                  AND  guild_id = ?
+                  AND  date     = ?
+                ORDER BY id
+                """,
+                (user_id, guild_id, date),
+            ) as cur:
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, row)) for row in await cur.fetchall()]
+
+    async def update_bounty_progress(
+        self,
+        user_id: int,
+        guild_id: int,
+        bounty_id: int,
+        date: str,
+        new_progress: int,
+    ) -> None:
+        """
+        Set the progress counter for a specific bounty slot.
+
+        Only updates rows where reward_claimed = 0 to prevent overwriting
+        already-completed entries.
+        """
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """
+                UPDATE user_bounties
+                SET    progress = ?
+                WHERE  user_id        = ?
+                  AND  guild_id       = ?
+                  AND  bounty_id      = ?
+                  AND  date           = ?
+                  AND  reward_claimed = 0
+                """,
+                (new_progress, user_id, guild_id, bounty_id, date),
+            )
+            await db.commit()
+
+    async def mark_bounty_claimed(
+        self,
+        user_id: int,
+        guild_id: int,
+        bounty_id: int,
+        date: str,
+    ) -> None:
+        """Flip reward_claimed to 1 for a specific bounty."""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """
+                UPDATE user_bounties
+                SET    reward_claimed = 1
+                WHERE  user_id   = ?
+                  AND  guild_id  = ?
+                  AND  bounty_id = ?
+                  AND  date      = ?
+                """,
+                (user_id, guild_id, bounty_id, date),
+            )
+            await db.commit()
+
+    async def is_full_house_bonus_paid(
+        self,
+        user_id: int,
+        guild_id: int,
+        date: str,
+    ) -> bool:
+        """Return True if the full-house bonus has already been awarded today."""
+        async with aiosqlite.connect(self.path) as db:
+            # Ensure a sentinel row exists
+            await db.execute(
+                """
+                INSERT OR IGNORE INTO user_bounty_bonus
+                    (user_id, guild_id, date, bonus_paid)
+                VALUES (?, ?, ?, 0)
+                """,
+                (user_id, guild_id, date),
+            )
+            await db.commit()
+
+            async with db.execute(
+                """
+                SELECT bonus_paid FROM user_bounty_bonus
+                WHERE  user_id = ? AND guild_id = ? AND date = ?
+                """,
+                (user_id, guild_id, date),
+            ) as cur:
+                row = await cur.fetchone()
+                return bool(row and row[0])
+
+    async def set_full_house_bonus_paid(
+        self,
+        user_id: int,
+        guild_id: int,
+        date: str,
+    ) -> None:
+        """Mark the full-house bonus as paid for today."""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """
+                INSERT INTO user_bounty_bonus (user_id, guild_id, date, bonus_paid)
+                VALUES (?, ?, ?, 1)
+                ON CONFLICT(user_id, guild_id, date)
+                DO UPDATE SET bonus_paid = 1
+                """,
+                (user_id, guild_id, date),
+            )
+            await db.commit()
+
+    async def reset_all_bounties(self) -> int:
+        """
+        Hard-delete all rows from user_bounties and user_bounty_bonus.
+
+        Called by the Bounty cog's background task at 02:00 CET every night.
+        Returns the number of bounty rows deleted (for logging).
+        """
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute("DELETE FROM user_bounties")
+            deleted = cur.rowcount
+            await db.execute("DELETE FROM user_bounty_bonus")
+            await db.commit()
+        return deleted

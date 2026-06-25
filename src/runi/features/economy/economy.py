@@ -59,6 +59,15 @@ class Economy(commands.Cog):
         })
         await ctx.send(embed=embed)
 
+        # ── Bounty hook: increment work_count progress ─────────────────────
+        bounty_cog = self.bot.get_cog("Bounty")
+        if bounty_cog:
+            await bounty_cog.increment_bounty_progress(
+                user_id=ctx.author.id,
+                guild_id=guild.id,
+                progress_type="work_count",
+            )
+
     # ── /daily ─────────────────────────────────────────────────────────────────
     @commands.guild_only()
     @commands.hybrid_command(name="daily", description="Claim your daily Runeshard reward.")
@@ -96,8 +105,16 @@ class Economy(commands.Cog):
             "streak_bar": streak_bar,
             "footer": footer,
         })
-
         await ctx.send(embed=embed)
+
+        # ── Bounty hook: increment daily_count progress ────────────────────
+        bounty_cog = self.bot.get_cog("Bounty")
+        if bounty_cog:
+            await bounty_cog.increment_bounty_progress(
+                user_id=ctx.author.id,
+                guild_id=guild.id,
+                progress_type="daily_count",
+            )
 
     # ── /balance ───────────────────────────────────────────────────────────────
     @commands.guild_only()
@@ -143,10 +160,9 @@ class Economy(commands.Cog):
                 "balance": result["balance"]
             })
             await ctx.send(embed=embed, ephemeral=True, delete_after=5)
-            return;
+            return
 
         result_label = result["result"].capitalize()
-
         outcome = "You Won!" if result["won"] else "You Lost!"
 
         description = (
@@ -161,8 +177,17 @@ class Economy(commands.Cog):
             "description": description,
             "balance": result["balance"]
         })
-
         await ctx.send(embed=embed)
+
+        # ── Bounty hook: increment coinflip_win progress on wins only ──────
+        if result["won"]:
+            bounty_cog = self.bot.get_cog("Bounty")
+            if bounty_cog:
+                await bounty_cog.increment_bounty_progress(
+                    user_id=ctx.author.id,
+                    guild_id=guild.id,
+                    progress_type="coinflip_win",
+                )
 
     # ── /richlist ──────────────────────────────────────────────────────────────
     @commands.guild_only()
