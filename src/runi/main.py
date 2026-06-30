@@ -13,6 +13,7 @@ from runi import features
 from runi.database import Database
 from runi.utils import log, colors
 from runi.utils.embed_renderer import EmbedRenderer
+from runi.utils.emojis import EmojiRegistry
 from runi.utils.paths import BOT_DATA_DB_PATH
 
 
@@ -34,7 +35,8 @@ class RuniClient(commands.Bot):
         self.guild_ids = guild_ids
         self.embed_renderer = EmbedRenderer()
         self.db = Database(str(BOT_DATA_DB_PATH))
-        
+        self.app_emojis = EmojiRegistry()
+
     async def setup_hook(self):
         features_root = Path(features.__path__[0])
 
@@ -64,6 +66,8 @@ class RuniClient(commands.Bot):
                     log.info(f"Loaded feature extension {module_name}.")
                 except Exception as e:
                     log.error(f"Failed to load feature extension {module_name}: {e}")
+
+        await self.app_emojis.load(self)
 
         for guild_id in self.guild_ids:
             guild = discord.Object(id=guild_id)

@@ -44,7 +44,7 @@ class Ascension(commands.Cog):
         value = self.clockwinders_table.get(discount, drop)
 
         await ctx.send(
-            f"**Clockwinders for 7.2% Legendary:** {value:,} <:FM_Clockwinder:1501325934673002496>\n"
+            f"**Clockwinders for 7.2% Legendary:** {value:,} {self.bot.app_emojis.get('Clockwinder')}\n"
             f"-# {discount}% discount • {drop}% drop chance"
         )
 
@@ -57,7 +57,7 @@ class Ascension(commands.Cog):
         value = self.eggshells_table.get(drop)
 
         await ctx.send(
-            f"**Eggshells for 7.2% Legendary:** {value:,} <:FM_Eggshell:1502032930988621914>\n"
+            f"**Eggshells for 7.2% Legendary:** {value:,} {self.bot.app_emojis.get('Eggshell')}\n"
             f"-# {drop}% drop chance"
         )
 
@@ -70,7 +70,7 @@ class Ascension(commands.Cog):
         value = self.skill_tickets_table.get(discount)
 
         await ctx.send(
-            f"**Skill Tickets for 2% Legendary:** {value:,} <:FM_SkillTicket:1502034730831446159>\n"
+            f"**Skill Tickets for 2% Legendary:** {value:,} {self.bot.app_emojis.get('SkillTicket')}\n"
             f"-# {discount}% discount"
         )
 
