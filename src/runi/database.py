@@ -202,7 +202,7 @@ class Database:
                 new_streak = 1
             else:
                 days_since = (today - last_day).days
-                if days_since <= 2:
+                if days_since == 1:
                     new_streak = min(user["daily_streak"] + 1, DAILY_STREAK_MAX)
                 else:
                     new_streak = 1
