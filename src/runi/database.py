@@ -61,6 +61,13 @@ class Database:
             (user_id, guild_id),
         )
 
+    async def _ensure_users_exist(self, db, guild_id: int, user_ids: list[int]):
+        """
+        Ensure all specified users have records in the database for a guild.
+        """
+        for user_id in user_ids:
+            await self._ensure_user(db, user_id, guild_id)
+
     async def _fetch_user(self, db, user_id: int, guild_id: int) -> dict:
         await self._ensure_user(db, user_id, guild_id)
         async with db.execute(
@@ -261,6 +268,61 @@ class Database:
             )
             await db.commit()
         return {"success": True, "reason": "ok", "from_balance": new_from, "to_balance": new_to}
+
+    async def add_runes(self, user_id: int, guild_id: int, amount: int) -> dict:
+        """
+        Add Runes to a user.
+        Returns {"success": bool, "balance": int}
+        """
+        async with aiosqlite.connect(self.path) as db:
+            user = await self._fetch_user(db, user_id, guild_id)
+            new_balance = user["runeshards"] + amount
+            await db.execute(
+                "UPDATE users SET runeshards = ? WHERE user_id = ? AND guild_id = ?",
+                (new_balance, user_id, guild_id),
+            )
+            await db.commit()
+        return {"success": True, "balance": new_balance}
+
+    async def remove_runes(self, user_id: int, guild_id: int, amount: int) -> dict:
+        """
+        Remove Runes from a user.
+        Returns {"success": bool, "reason": str, "balance": int}
+        Reasons: "ok" | "insufficient_funds"
+        """
+        async with aiosqlite.connect(self.path) as db:
+            user = await self._fetch_user(db, user_id, guild_id)
+            if user["runeshards"] < amount:
+                return {"success": False, "reason": "insufficient_funds", "balance": user["runeshards"]}
+            new_balance = user["runeshards"] - amount
+            await db.execute(
+                "UPDATE users SET runeshards = ? WHERE user_id = ? AND guild_id = ?",
+                (new_balance, user_id, guild_id),
+            )
+            await db.commit()
+        return {"success": True, "reason": "ok", "balance": new_balance}
+
+    async def add_runes_to_all(self, guild_id: int, user_ids: list[int], amount: int) -> dict:
+        """
+        Add Runes to specified users, creating records if they don't exist.
+        Returns {"success": bool, "total_members": int, "total_distributed": int}
+        """
+        if not user_ids:
+            return {"success": True, "total_members": 0, "total_distributed": 0}
+
+        async with aiosqlite.connect(self.path) as db:
+            await self._ensure_users_exist(db, guild_id, user_ids)
+
+            await db.execute(
+                "UPDATE users SET runeshards = runeshards + ? WHERE guild_id = ? AND user_id IN ({})".format(
+                    ",".join("?" * len(user_ids))
+                ),
+                (amount, guild_id, *user_ids),
+            )
+            await db.commit()
+
+        total_distributed = len(user_ids) * amount
+        return {"success": True, "total_members": len(user_ids), "total_distributed": total_distributed}
 
     async def transfer_item(self, from_id: int, to_id: int, guild_id: int, item_id: int) -> dict:
         """

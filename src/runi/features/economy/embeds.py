@@ -1,10 +1,10 @@
 EMBEDS = {
     "work_success": {
         "title": "⚒️ Work Complete",
-        "description": (
-            "You worked hard and earned {earned:,} Runes 💎\n"
-            "Balance: {balance:,} Runes"
-        ),
+        "description": "You worked hard and earned {earned:,} Runes 💎",
+        "fields": [
+            ("Balance", "{balance:,} Runes", True)
+        ],
         "color": "gold",
         "footer": "Runi • Economy | You can work again in {cooldown}."
     },
@@ -88,18 +88,59 @@ EMBEDS = {
     },
 
     "give_success": {
-        "title": "💸 Runes Sent!",
-        "description": "{sender} gave **{amount:,} Runes** to {receiver}!",
+        "title": "💸 Runes Given!",
+        "description": "Given **{amount:,} Runes** to **{receiver}**!",
         "fields": [
-            ("Your new balance", "{balance:,} Runes", True)
+            ("Their new balance", "{balance:,} Runes", True)
         ],
         "color": "green",
         "footer": "Runi • Economy"
     },
 
+    "giveall_success": {
+        "title": "💰 Mass Distribution Complete!",
+        "description": "Successfully distributed **{amount:,} Runes** to **{target}**!",
+        "fields": [
+            ("Members Rewarded", "{total_members}", True),
+            ("Total Distributed", "{total_distributed:,} Runes", True),
+        ],
+        "color": "gold",
+        "footer": "Runi • Economy"
+    },
+
+    "giveall_no_members": {
+        "title": "❌ No Members Found",
+        "description": "No members in **{target}** to reward.",
+        "color": "red",
+        "footer": "Runi • Economy"
+    },
+
+    "take_invalid_amount": {
+        "description": "Amount must be greater than 0.",
+        "color": "red",
+        "footer": "Runi • Economy",
+    },
+
+    "take_insufficient_funds": {
+        "title": "❌ Not Enough Runes",
+        "description": "**{member}** only has **{balance:,}** Runes.",
+        "color": "red",
+        "footer": "Runi • Economy"
+    },
+
+    "take_success": {
+        "title": "🔴 Runes Removed!",
+        "description": "Took **{amount:,} Runes** from **{member}**!",
+        "fields": [
+            ("Their new balance", "{balance:,} Runes", True)
+        ],
+        "color": "red",
+        "footer": "Runi • Economy"
+    },
+
     "error_insufficient_funds": {
         "title": "❌ Not Enough Runes",
-        "description": "You only have {balance:,} Runes.",
+        "description": "You only have **{balance:,}** Runes.",
         "color": "red",
         "footer": "Runi • Economy"
     }
