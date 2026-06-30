@@ -1,6 +1,7 @@
 import aiosqlite
 import time
 from pathlib import Path
+from datetime import datetime, UTC, timedelta
 
 from runi.config import XP_PER_MESSAGE, XP_COOLDOWN_SECONDS, XP_FOR_LEVEL
 
@@ -160,29 +161,44 @@ class Database:
                  "streak": int, "wait_seconds": float}
         """
         from .config import (
-            DAILY_COOLDOWN_SECONDS,
             DAILY_BASE,
             DAILY_STREAK_BONUS,
             DAILY_STREAK_MAX,
-            DAILY_STREAK_RESET_WINDOW,
         )
 
-        now = time.time()
+        now = datetime.now(UTC)
+        today = now.date()
+        now_ts = now.timestamp()
+
         async with aiosqlite.connect(self.path) as db:
             user = await self._fetch_user(db, user_id, guild_id)
-            elapsed = now - user["last_daily"]
 
-            if elapsed < DAILY_COOLDOWN_SECONDS:
+            last_day = (
+                datetime.fromtimestamp(user["last_daily"], UTC).date() if user["last_daily"] > 0
+                else None
+            )
+
+            if last_day == today:
+                next_midnight = datetime.combine(
+                    today + timedelta(days=1),
+                    datetime.min.time(),
+                    tzinfo=UTC,
+                )
+
                 return {
                     "success": False,
-                    "wait_seconds": DAILY_COOLDOWN_SECONDS - elapsed,
+                    "wait_seconds": (next_midnight - now).total_seconds(),
                 }
 
-            # Streak logic: reward extends streak; gap beyond reset window breaks it
-            if elapsed < DAILY_STREAK_RESET_WINDOW:
-                new_streak = min(user["daily_streak"] + 1, DAILY_STREAK_MAX)
+            # Streak continues if the previous claim was yesterday (UTC).
+            if last_day is None:
+                new_streak = 1
             else:
-                new_streak = 1  # streak broken, restart
+                days_since = (today - last_day).days
+                if days_since <= 2:
+                    new_streak = min(user["daily_streak"] + 1, DAILY_STREAK_MAX)
+                else:
+                    new_streak = 1
 
             # Payout scales with streak
             earned = DAILY_BASE + DAILY_STREAK_BONUS * (new_streak - 1)
@@ -192,7 +208,7 @@ class Database:
                 """UPDATE users
                    SET runeshards = ?, last_daily = ?, daily_streak = ?
                    WHERE user_id = ? AND guild_id = ?""",
-                (new_balance, now, new_streak, user_id, guild_id),
+                (new_balance, now_ts, new_streak, user_id, guild_id),
             )
             await db.commit()
 

@@ -29,13 +29,6 @@ WORK_MAX: int = 150
 
 # ── Economy – /daily ──────────────────────────────────────────────────────────
 
-# Cooldown between /daily uses (seconds).  86400 = 24 hours
-DAILY_COOLDOWN_SECONDS: float = 86400.0
-
-# If the user claims their daily within this many seconds after the previous
-# claim they keep their streak going.  Set to 48 h so players aren't punished
-# for claiming slightly later each day.
-DAILY_STREAK_RESET_WINDOW: float = 172_800.0  # 48 hours
 
 # Base payout for /daily (streak day 1)
 DAILY_BASE: int = 300
