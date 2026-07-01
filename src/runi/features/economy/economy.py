@@ -175,19 +175,33 @@ class Economy(commands.Cog):
 
         rows = await self.bot.db.get_rich_list(guild.id, limit=10)
 
-        medals = ["🥇", "🥈", "🥉"]
-        lines = []
+        medals = [":Runi_Gold:", ":Runi_Silver:", ":Runi_Bronze:"]
+
+        members = []
+        runes = []
+        streaks = []
 
         for i, row in enumerate(rows):
             member = guild.get_member(row["user_id"])
             name = member.display_name if member else f"Unknown ({row['user_id']})"
-            medal = medals[i] if i < 3 else f"`{i+1}.`"
-            streak_str = f"{row['daily_streak']} 🔥" if row["daily_streak"] > 1 else ""
-            lines.append(f"{medal} **{name}** — {row['runeshards']:,} :Runes: {streak_str}")
 
-        content = "\n".join(lines) if lines else "No data yet — get earning!"
+            rank = medals[i] if i < 3 else f"`{i + 1}.`"
+
+            members.append(f"{rank} **{name}**")
+            runes.append(f":Runes: {row['runeshards']:,}")
+            streaks.append(f"🔥 {row['daily_streak']}")
+
+        if not rows:
+            members.append("No data yet")
+            runes.append("-")
+            streaks.append("-")
+
         embed = self.bot.embed_renderer.render("richlist", {
-            "content": content
+            "fields": [
+                ("Member", "\n".join(members), True),
+                ("Runes", "\n".join(runes), True),
+                ("Daily Streak", "\n".join(streaks), True)
+            ]
         })
 
         await ctx.send(embed=embed)

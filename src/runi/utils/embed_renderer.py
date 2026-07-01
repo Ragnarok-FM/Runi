@@ -50,7 +50,12 @@ class EmbedRenderer:
             color= colors.get_color(template.get("color"))
         )
 
-        for i, field in enumerate(template.get("fields", [])):
+        fields = [
+            *template.get("fields", []),
+            *data.get("fields", [])
+        ]
+
+        for i, field in enumerate(fields):
             if i >= MAX_FIELDS:
                 break
 

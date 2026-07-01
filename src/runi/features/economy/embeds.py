@@ -68,8 +68,7 @@ EMBEDS = {
     },
 
     "richlist": {
-        "title": "💰 Runes Rich List",
-        "description": "{content}",
+        "title": ":Runes: Hall of Wealth",
         "color": "gold",
         "footer": "Runi • Economy"
     },
