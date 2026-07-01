@@ -200,7 +200,7 @@ class Economy(commands.Cog):
             "fields": [
                 ("Member", "\n".join(members), True),
                 ("Runes", "\n".join(runes), True),
-                ("Daily Streak", "\n".join(streaks), True)
+                ("Streak", "\n".join(streaks), True)
             ]
         })
 
