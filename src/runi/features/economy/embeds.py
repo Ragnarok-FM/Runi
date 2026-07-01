@@ -1,9 +1,9 @@
 EMBEDS = {
     "work_success": {
         "title": "⚒️ Work Complete",
-        "description": "You worked hard and earned {earned:,} Runes 💎",
+        "description": "You worked hard and earned {earned:,} :Runes:",
         "fields": [
-            ("Balance", "{balance:,} Runes", True)
+            ("Balance", "{balance:,} :Runes:", True)
         ],
         "color": "gold",
         "footer": "Runi • Economy | You can work again in {cooldown}."
@@ -22,8 +22,8 @@ EMBEDS = {
     "daily_claim": {
         "title": "🗓️ Daily Reward Claimed!",
         "fields": [
-            ("Earned", "{earned:,} Runes 💎", True),
-            ("Balance", "{balance:,} Runes", True),
+            ("Earned", "{earned:,} :Runes:", True),
+            ("Balance", "{balance:,} :Runes:", True),
             ("Streak — Day {streak}", "{streak_bar}", False),
         ],
         "color": "gold",
@@ -43,7 +43,7 @@ EMBEDS = {
     "balance": {
         "title": "💎 {username}'s Wallet",
         "fields": [
-            ("Runes", "{runeshards:,}", True),
+            ("Runes", "{runes:,} :Runes:", True),
             ("Daily Streak", "{daily_streak} 🔥", True),
         ],
         "thumbnail": "{avatar}",
@@ -61,14 +61,14 @@ EMBEDS = {
         "title": "🪙 {result} — {outcome}",
         "description": "{description}",
         "fields": [
-            ("Balance", "{balance:,} Runes", True)
+            ("Balance", "{balance:,} :Runes:", True)
         ],
         "color": "gold",
         "footer": "Runi • Economy"
     },
 
     "richlist": {
-        "title": "💰 Runeshard Rich List",
+        "title": "💰 Runes Rich List",
         "description": "{content}",
         "color": "gold",
         "footer": "Runi • Economy"
@@ -89,9 +89,9 @@ EMBEDS = {
 
     "give_success": {
         "title": "💸 Runes Given!",
-        "description": "Given **{amount:,} Runes** to **{receiver}**!",
+        "description": "Given **{amount:,} :Runes:** to **{receiver}**!",
         "fields": [
-            ("Their new balance", "{balance:,} Runes", True)
+            ("Their new balance", "{balance:,} :Runes:", True)
         ],
         "color": "green",
         "footer": "Runi • Economy"
@@ -99,10 +99,10 @@ EMBEDS = {
 
     "giveall_success": {
         "title": "💰 Mass Distribution Complete!",
-        "description": "Successfully distributed **{amount:,} Runes** to **{target}**!",
+        "description": "Successfully distributed **{amount:,} :Runes:** to **{target}**!",
         "fields": [
             ("Members Rewarded", "{total_members}", True),
-            ("Total Distributed", "{total_distributed:,} Runes", True),
+            ("Total Distributed", "{total_distributed:,} :Runes:", True),
         ],
         "color": "gold",
         "footer": "Runi • Economy"
@@ -123,16 +123,16 @@ EMBEDS = {
 
     "take_insufficient_funds": {
         "title": "❌ Not Enough Runes",
-        "description": "**{member}** only has **{balance:,}** Runes.",
+        "description": "**{member}** only has **{balance:,}** :Runes:.",
         "color": "red",
         "footer": "Runi • Economy"
     },
 
     "take_success": {
         "title": "🔴 Runes Removed!",
-        "description": "Took **{amount:,} Runes** from **{member}**!",
+        "description": "Took **{amount:,} :Runes:** from **{member}**!",
         "fields": [
-            ("Their new balance", "{balance:,} Runes", True)
+            ("Their new balance", "{balance:,} :Runes:", True)
         ],
         "color": "red",
         "footer": "Runi • Economy"
@@ -140,7 +140,7 @@ EMBEDS = {
 
     "error_insufficient_funds": {
         "title": "❌ Not Enough Runes",
-        "description": "You only have **{balance:,}** Runes.",
+        "description": "You only have **{balance:,}** :Runes:.",
         "color": "red",
         "footer": "Runi • Economy"
     }

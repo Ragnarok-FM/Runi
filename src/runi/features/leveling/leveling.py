@@ -65,14 +65,14 @@ class Leveling(commands.Cog):
         # Progress bar
         bar_width = 18
         filled = int(bar_width * xp_into_level / xp_span) if xp_span else bar_width
-        bar = "█" * filled + "░" * (bar_width - filled)
+        bar = "▰" * filled + "▱" * (bar_width - filled)
 
         embed = self.bot.embed_renderer.render("profile", {
             "username": target.display_name,
             "avatar": target.display_avatar.url,
             "level": level,
             "xp": xp,
-            "runeshards": user["runeshards"],
+            "runes": user["runeshards"],
             "next_level": level + 1,
             "bar": bar,
             "xp_into_level": xp_into_level,
@@ -110,7 +110,7 @@ class Leveling(commands.Cog):
         # Progress bar (20 chars wide)
         bar_width = 20
         filled = int(bar_width * xp_into_level / xp_span) if xp_span else bar_width
-        bar = "█" * filled + "░" * (bar_width - filled)
+        bar = "▰" * filled + "▱" * (bar_width - filled)
 
         embed = self.bot.embed_renderer.render("rank", {
             "username": target.display_name,

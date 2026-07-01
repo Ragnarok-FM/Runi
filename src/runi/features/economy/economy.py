@@ -61,7 +61,7 @@ class Economy(commands.Cog):
 
     # ── /daily ─────────────────────────────────────────────────────────────────
     @commands.guild_only()
-    @commands.hybrid_command(name="daily", description="Claim your daily Runeshard reward.")
+    @commands.hybrid_command(name="daily", description="Claim your daily Runes reward.")
     async def daily(self, ctx: commands.Context):
         guild = ctx.guild
         assert guild is not None
@@ -84,7 +84,7 @@ class Economy(commands.Cog):
         streak_label = f"Day {streak}" + (f"/{DAILY_STREAK_MAX}" if streak >= DAILY_STREAK_MAX else "")
 
         footer = (
-            f"Tomorrow: {next_payout:,} Runes (+{next_bonus} streak bonus)"
+            f"Tomorrow: {next_payout:,} :Runes: (+{next_bonus} streak bonus)"
             if streak < DAILY_STREAK_MAX
             else "Max streak reached! You're getting the full bonus every day."
         )
@@ -101,7 +101,7 @@ class Economy(commands.Cog):
 
     # ── /balance ───────────────────────────────────────────────────────────────
     @commands.guild_only()
-    @commands.hybrid_command(name="balance", description="Check your (or another user's) Runeshard balance.")
+    @commands.hybrid_command(name="balance", description="Check your (or another user's) Runes balance.")
     @app_commands.describe(member="The member to check (leave blank for yourself).")
     async def balance(self, ctx: commands.Context, member: Optional[discord.Member] = None):
         target = member or ctx.author
@@ -112,7 +112,7 @@ class Economy(commands.Cog):
 
         embed = self.bot.embed_renderer.render("balance", {
             "username": target.display_name,
-            "runeshards": user["runeshards"],
+            "runes": user["runeshards"],
             "daily_streak": user["daily_streak"],
             "avatar": target.display_avatar.url,
         })
@@ -150,9 +150,9 @@ class Economy(commands.Cog):
         outcome = "You Won!" if result["won"] else "You Lost!"
 
         description = (
-            f"You bet on **{choice.name}** and won **{result['change']:,} Runes**!"
+            f"You bet on **{choice.name}** and won **{result['change']:,} :Runes:**!"
             if result["won"]
-            else f"You bet on **{choice.name}** but it landed on **{result_label}**. You lost {result['change']:,} Runes."
+            else f"You bet on **{choice.name}** but it landed on **{result_label}**. You lost {result['change']:,} :Runes:."
         )
 
         embed = self.bot.embed_renderer.render("coinflip_result", {
@@ -182,8 +182,8 @@ class Economy(commands.Cog):
             member = guild.get_member(row["user_id"])
             name = member.display_name if member else f"Unknown ({row['user_id']})"
             medal = medals[i] if i < 3 else f"`{i+1}.`"
-            streak_str = f"  🔥 {row['daily_streak']}" if row["daily_streak"] > 1 else ""
-            lines.append(f"{medal} **{name}** — {row['runeshards']:,} Runes{streak_str}")
+            streak_str = f"{row['daily_streak']} 🔥" if row["daily_streak"] > 1 else ""
+            lines.append(f"{medal} **{name}** — {row['runeshards']:,} :Runes: {streak_str}")
 
         content = "\n".join(lines) if lines else "No data yet — get earning!"
         embed = self.bot.embed_renderer.render("richlist", {

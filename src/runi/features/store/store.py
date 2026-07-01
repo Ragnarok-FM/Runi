@@ -21,7 +21,7 @@ class Store(commands.Cog):
         self.bot = bot
 
     # ── /store ─────────────────────────────────────────────────────────────────
-    @commands.hybrid_command(name="store", description="Browse the Runeshard store.")
+    @commands.hybrid_command(name="store", description="Browse the Runes store.")
     async def store(self, ctx: commands.Context):
         await ctx.defer()
 
@@ -49,7 +49,7 @@ class Store(commands.Cog):
                 label = TYPE_LABELS.get(item_type, item_type.capitalize())
 
                 lines = [
-                    f"`#{i['item_id']}` **{i['name']}** — {i['price']:,} Runes\n  {i['description']}"
+                    f"`#{i['item_id']}` **{i['name']}** — {i['price']:,} {self.bot.app_emojis.get('Runes')}\n  {i['description']}"
                     for i in group
                 ]
 
@@ -79,7 +79,7 @@ class Store(commands.Cog):
                 desc = f"You already own **{result['item']['name']}**!"
             elif reason == "insufficient_funds":
                 desc = (
-                    f"You need **{result['item']['price']:,} Runes** to buy "
+                    f"You need **{result['item']['price']:,} :Runes:** to buy "
                     f"**{result['item']['name']}** but only have "
                     f"**{result['balance']:,}**.\n"
                     f"Use `/work` and `/daily` to earn more!"

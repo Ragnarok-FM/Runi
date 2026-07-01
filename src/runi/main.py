@@ -33,9 +33,9 @@ class RuniClient(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned_or("!"), intents=intents)
 
         self.guild_ids = guild_ids
-        self.embed_renderer = EmbedRenderer()
-        self.db = Database(str(BOT_DATA_DB_PATH))
         self.app_emojis = EmojiRegistry()
+        self.embed_renderer = EmbedRenderer(emoji_registry=self.app_emojis)
+        self.db = Database(str(BOT_DATA_DB_PATH))
 
     async def setup_hook(self):
         features_root = Path(features.__path__[0])

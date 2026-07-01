@@ -1,12 +1,15 @@
 EMBEDS = {
     "profile": {
-        "title": "🧙 {username}'s Profile",
-        "thumbnail": "{avatar}",
+        "author": {
+            "name": "{username}'s Profile",
+            "icon_url": "{avatar}"
+        },
         "fields": [
             ("Level", "{level}", True),
             ("Total XP", "{xp:,}", True),
-            ("Runes 💎", "{runeshards:,}", True),
-            ("Progress to Level {next_level}", "`{bar}` {xp_into_level:,} / {xp_span:,} XP", False),
+            ("\u200b", "\u200b", True),
+            ("Progress to Level {next_level}", "{bar} {xp_into_level:,} / {xp_span:,} XP", False),
+            ("Runes", "{runes:,} :Runes:", True),
             ("Daily Streak", "{daily_streak} 🔥", True),
             ("Items Owned", "{item_count}", True)
         ],
@@ -20,10 +23,10 @@ EMBEDS = {
         "fields": [
             ("Level", "{level}", True),
             ("Total XP", "{xp:,}", True),
-            ("Progress to Level {next_level}", "`{bar}` {xp_into_level:,} / {xp_span:,} XP", False),
+            ("Progress to Level {next_level}", "{bar} {xp_into_level:,} / {xp_span:,} XP", False),
         ],
         "color": "blurple",
-        "footer": "Runi • XP System"        
+        "footer": "Runi • XP System"
     },
 
     "xp_leaderboard": {

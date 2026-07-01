@@ -1,6 +1,6 @@
 EMBEDS = {
     "store": {
-        "title": "🛒 Runeshard Store",
+        "title": "🛒 Runes Store",
         "description": "{description}",
         "color": "gold",
         "footer": "Runi • Economy"
@@ -15,9 +15,9 @@ EMBEDS = {
 
     "store_purchase_success": {
         "title": "✅ Purchase Successful!",
-        "description": "You bought **{name}** for {price:,} Runes.",
+        "description": "You bought **{name}** for {price:,} :Runes:.",
         "fields": [
-            ("Remaining Balance", "{balance:,} Runes", True)
+            ("Remaining Balance", "{balance:,} :Runes:", True)
         ],
         "color": "gold",
         "footer": "Runi • Economy"
@@ -46,7 +46,7 @@ EMBEDS = {
 
     "store_add_item": {
         "title": "✅ Item Added",
-        "description": "**{name}** (ID: `#{id}`) added to the store for {price:,} Runes.",
+        "description": "**{name}** (ID: `#{id}`) added to the store for {price:,} :Runes:.",
         "color": "green",
         "footer": "Runi • Economy"
     },
