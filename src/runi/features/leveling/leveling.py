@@ -174,7 +174,7 @@ class Leveling(commands.Cog):
 
         target_role = discord.utils.get(guild.roles, name=target_role_name)
         if not target_role:
-            await self._ensure_tier_roles(guild)
+            await self.ensure_tier_roles(guild)
 
             target_role = discord.utils.get(guild.roles, name=target_role_name)
             if not target_role:
