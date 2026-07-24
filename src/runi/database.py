@@ -52,6 +52,20 @@ class Database:
                     FOREIGN KEY (item_id) REFERENCES store_items(item_id)
                 )
             """)
+            # Highest gambling wins and losses
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS gambling_records (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id     INTEGER NOT NULL,
+                    user_id      INTEGER NOT NULL,
+                    display_name TEXT    NOT NULL,
+                    game         TEXT    NOT NULL,
+                    won          INTEGER NOT NULL,
+                    amount       INTEGER NOT NULL,
+                    message_url  TEXT    NOT NULL,
+                    created_at   REAL    NOT NULL
+                )
+            """)
             await db.commit()
 
     # ── Internal helper ────────────────────────────────────────────────────────
@@ -240,6 +254,44 @@ class Database:
                    LIMIT ?""",
                 (guild_id, limit),
             ) as cur:
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, row)) for row in await cur.fetchall()]
+
+    async def add_gambling_record(
+        self,
+        guild_id: int,
+        user_id: int,
+        display_name: str,
+        game: str,
+        won: bool,
+        amount: int,
+        message_url: str,
+    ):
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """
+                INSERT INTO gambling_records (guild_id, user_id, display_name, game, won, amount, message_url, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (guild_id, user_id, display_name, game, int(won), amount, message_url, time.time())
+            )
+
+            await db.commit()
+
+
+    async def get_gambling_records(self, guild_id: int, won: bool, game: str | None = None, limit: int = 10) -> list[dict]:
+        query = "SELECT * FROM gambling_records WHERE guild_id = ? AND won = ?"
+        params = [guild_id, int(won)]
+        
+        if game is not None:
+            query += " AND game = ?"
+            params.append(game)
+        
+        query += " ORDER BY amount DESC LIMIT ?"
+        params.append(limit)
+        
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(query, params) as cur:
                 cols = [d[0] for d in cur.description]
                 return [dict(zip(cols, row)) for row in await cur.fetchall()]
 

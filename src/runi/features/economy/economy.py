@@ -162,7 +162,17 @@ class Economy(commands.Cog):
             "balance": result["balance"]
         })
 
-        await ctx.send(embed=embed)
+        message = await ctx.send(embed=embed)
+
+        await self.bot.db.add_gambling_record(
+            guild_id=guild.id,
+            user_id=ctx.author.id,
+            display_name=ctx.author.display_name,
+            game="coinflip",
+            won=result["won"],
+            amount=bet,
+            message_url=message.jump_url,
+        )
 
     # ── /richlist ──────────────────────────────────────────────────────────────
     @commands.guild_only()
@@ -187,6 +197,43 @@ class Economy(commands.Cog):
         content = "\n".join(lines) if lines else "No data yet — get earning!"
         embed = self.bot.embed_renderer.render("richlist", {
             "content": content
+        })
+
+        await ctx.send(embed=embed)
+
+    @commands.guild_only()
+    @commands.hybrid_command(name="highroller", description="View the biggest gambling wins or losses.")
+    @app_commands.describe(type="View biggest wins or biggest losses.", game="Filter by game (leave blank to show all games).")
+    @app_commands.choices(
+        type=[app_commands.Choice(name="Wins", value="wins"), app_commands.Choice(name="Losses", value="losses")],
+        game=[app_commands.Choice(name="Coinflip", value="coinflip")]
+    )
+    async def highroller(self, ctx: commands.Context, type: app_commands.Choice[str], game: Optional[app_commands.Choice[str]] = None):
+        await ctx.defer()
+
+        guild = ctx.guild
+        assert guild is not None
+
+        rows = await self.bot.db.get_gambling_records(guild.id, won=(type.value == "wins"), game=game.value if game else None)
+        content = []
+        medals = [":Runi_Gold:", ":Runi_Silver:", ":Runi_Bronze:"]
+
+        for i, row in enumerate(rows):
+            member = guild.get_member(row["user_id"])
+            name = (member.display_name if member else row["display_name"])
+            place = medals[i] if i < 3 else f"`{i + 1}.`"
+
+            content.append(
+                f"{place} **{name}**\n"
+                f":Runes: **{row['amount']:,}**\n"
+                f"[Jump to Game]({row['message_url']})"
+            )
+
+        title_suffix = f" — {game.name}" if game else ""
+        title_type = "Fortune" if type.value == "wins" else "Misfortune"
+        embed = self.bot.embed_renderer.render("highroller", {
+            "type": f"{title_type}{title_suffix}",
+            "content": "\n\n".join(content) if content else "No records yet."
         })
 
         await ctx.send(embed=embed)

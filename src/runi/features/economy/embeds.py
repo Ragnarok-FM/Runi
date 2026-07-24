@@ -74,6 +74,13 @@ EMBEDS = {
         "footer": "Runi • Economy"
     },
 
+    "highroller": {
+        "title": "Hall of {type}",
+        "description": "{content}",
+        "color": "gold",
+        "footer": "Runi • Economy"
+    },
+
     "give_invalid_amount": {
         "description": "Amount must be greater than 0.",
         "color": "red",
