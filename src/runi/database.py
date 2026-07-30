@@ -66,6 +66,24 @@ class Database:
                     created_at   REAL    NOT NULL
                 )
             """)
+
+            # Create indexes to optimize queries
+            # Users table
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_users_guild_level_xp ON users(guild_id, level DESC, xp DESC)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_users_guild_runeshards ON users(guild_id, runeshards DESC)")
+
+            # Store items table
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_store_items_guild_available ON store_items(guild_id, available)")
+
+            # User inventory table
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_inventory_user_guild ON user_inventory(user_id, guild_id)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_inventory_user_guild_item ON user_inventory(user_id, guild_id, item_id)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_inventory_user_guild_item_join ON user_inventory(user_id, guild_id, item_id)")
+
+            # Gambling records table
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_gambling_guild_won ON gambling_records(guild_id, won)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_gambling_guild_won_game ON gambling_records(guild_id, won, game)")
+
             await db.commit()
 
     # ── Internal helper ────────────────────────────────────────────────────────
@@ -436,6 +454,131 @@ class Database:
             )
             await db.commit()
         return {"success": True, "won": won, "result": result, "balance": new_balance, "change": abs(change)}
+
+    async def spin_slots(self, user_id: int, guild_id: int, bet: int) -> dict:
+        """
+        Spin the slot machine.
+
+        Returns:
+        {
+            "success": bool,
+            "won": bool,
+            "symbols": [str, str, str],
+            "match_type": str,
+            "payout": int,
+            "balance": int,
+            "change": int,
+        }
+        """
+        import random
+
+        symbols = {
+            "🍒": 100,
+            "🍋": 95,
+            "🍊": 85,
+            "🍇": 75,
+            "🔔": 60,
+            "⭐": 50,
+            "💎": 40,
+            "👑": 25,
+            "💰": 15,
+            "🃏": 8,  # Wild
+        }
+
+        paytable = {
+            # Three of a kind
+            ("🍒", 3): 3,
+            ("🍋", 3): 4,
+            ("🍊", 3): 5,
+            ("🍇", 3): 7,
+            ("🔔", 3): 10,
+            ("⭐", 3): 15,
+            ("💎", 3): 30,
+            ("👑", 3): 60,
+            ("💰", 3): 120,
+
+            # Two of a kind
+            ("🍒", 2): 0.6,
+            ("🍋", 2): 0.7,
+            ("🍊", 2): 0.8,
+            ("🍇", 2): 1.0,
+            ("🔔", 2): 1.4,
+            ("⭐", 2): 2.0,
+            ("💎", 2): 4.0,
+            ("👑", 2): 8.0,
+            ("💰", 2): 16.0,
+        }
+
+        symbol_names = tuple(symbols.keys())
+        symbol_weights = tuple(symbols.values())
+        wild = "🃏"
+
+        async with aiosqlite.connect(self.path) as db:
+            user = await self._fetch_user(db, user_id, guild_id)
+
+            if user["runeshards"] < bet:
+                return {
+                    "success": False,
+                    "balance": user["runeshards"],
+                }
+
+            result = random.choices(
+                symbol_names,
+                weights=symbol_weights,
+                k=3,
+            )
+
+            won = False
+            multiplier = 0
+            match_type = ""
+
+            if result.count(wild) == 3:
+                won = True
+                multiplier = 300
+                match_type = "Three Wilds"
+
+            else:
+                for symbol in symbol_names:
+                    if symbol == wild:
+                        continue
+
+                    matches = sum(
+                        reel == symbol or reel == wild
+                        for reel in result
+                    )
+
+                    payout = paytable.get((symbol, matches))
+                    if payout is None:
+                        continue
+
+                    if payout > multiplier:
+                        multiplier = payout
+                        won = True
+
+                        if matches == 3:
+                            match_type = f"Three {symbol}"
+                        else:
+                            match_type = f"Two {symbol}"
+
+            payout = int(bet * multiplier) if won else 0
+            change = payout - bet
+            balance = user["runeshards"] + change
+
+            await db.execute(
+                "UPDATE users SET runeshards = ? WHERE user_id = ? AND guild_id = ?",
+                (balance, user_id, guild_id),
+            )
+            await db.commit()
+
+            return {
+                "success": True,
+                "won": won,
+                "symbols": result,
+                "match_type": match_type,
+                "payout": payout,
+                "balance": balance,
+                "change": abs(change),
+            }
 
     # ── Store ──────────────────────────────────────────────────────────────────
     async def get_store_items(self, guild_id: int) -> list[dict]:

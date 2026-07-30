@@ -67,6 +67,29 @@ EMBEDS = {
         "footer": "Runi • Economy"
     },
 
+    "slots_invalid_bet": {
+        "description": "Bet must be greater than 0.",
+        "color": "red",
+        "footer": "Runi • Economy",
+    },
+
+    "slots_spinning": {
+        "title": "🎰 Spinning...",
+        "description": "{slot1} {slot2} {slot3}",
+        "color": "gold",
+        "footer": "Runi • Economy",
+    },
+
+    "slots_result": {
+        "title": "🎰 {outcome}",
+        "description": "{slot1} {slot2} {slot3}\n\n{description}",
+        "fields": [
+            ("Balance", "{balance:,} :Runes:", True)
+        ],
+        "color": "gold",
+        "footer": "Runi • Economy"
+    },
+
     "richlist": {
         "title": ":Runes: Hall of Wealth",
         "description": "{content}",

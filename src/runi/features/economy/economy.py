@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional, TYPE_CHECKING
 
 import discord
@@ -174,6 +175,87 @@ class Economy(commands.Cog):
             message_url=message.jump_url,
         )
 
+    # ── /slots ───────────────────────────────────────────────────────────
+    @commands.guild_only()
+    @commands.hybrid_command(name="slots", description="Bet your Runes on a slot machine!")
+    @app_commands.describe(bet="How many Runes to bet.")
+    async def slots(self, ctx: commands.Context, bet: int):
+        if bet <= 0:
+            embed = self.bot.embed_renderer.render("slots_invalid_bet", {})
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return
+
+        guild = ctx.guild
+        assert guild is not None
+
+        user = await self.bot.db.get_user(ctx.author.id, guild.id)
+        if user["runeshards"] < bet:
+            embed = self.bot.embed_renderer.render("error_insufficient_funds", {
+                "balance": user["runeshards"]
+            })
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return
+
+        results = await self.bot.db.spin_slots(ctx.author.id, guild.id, bet)
+
+        if not results["success"]:
+            embed = self.bot.embed_renderer.render("error_insufficient_funds", {
+                "balance": results["balance"]
+            })
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return
+
+        stages = [
+            ("🎰", "🎰", "🎰", 0.3),
+            (results["symbols"][0], "🎰", "🎰", 0.25),
+            (results["symbols"][0], results["symbols"][1], "🎰", 0.25),
+            (results["symbols"][0], results["symbols"][1], results["symbols"][2], 0.4),
+        ]
+
+        embed = self.bot.embed_renderer.render("slots_spinning", {
+            "slot1": stages[0][0],
+            "slot2": stages[0][1],
+            "slot3": stages[0][2],
+        })
+        message = await ctx.send(embed=embed)
+
+        for s1, s2, s3, delay in stages[1:]:
+            await asyncio.sleep(delay)
+            embed = self.bot.embed_renderer.render("slots_spinning", {
+                "slot1": s1,
+                "slot2": s2,
+                "slot3": s3,
+            })
+            await message.edit(embed=embed)
+            
+
+        outcome = "You Won!" if results["won"] else "You Lost!"
+        description = (
+            f"You hit **{results['match_type']}**! You won **{results['payout']:,} :Runes:**!"
+            if results["won"]
+            else f"No match. You lost {bet:,} :Runes:."
+        )
+
+        embed = self.bot.embed_renderer.render("slots_result", {
+            "slot1": results["symbols"][0],
+            "slot2": results["symbols"][1],
+            "slot3": results["symbols"][2],
+            "outcome": outcome,
+            "description": description,
+            "balance": results["balance"]
+        })
+        await message.edit(embed=embed)
+
+        await self.bot.db.add_gambling_record(
+            guild_id=guild.id,
+            user_id=ctx.author.id,
+            display_name=ctx.author.display_name,
+            game="slots",
+            won=results["won"],
+            amount=bet,
+            message_url=message.jump_url,
+        )
+
     # ── /richlist ──────────────────────────────────────────────────────────────
     @commands.guild_only()
     @commands.hybrid_command(name="richlist", description="See the wealthiest members on this server.")
@@ -206,7 +288,7 @@ class Economy(commands.Cog):
     @app_commands.describe(type="View biggest wins or biggest losses.", game="Filter by game (leave blank to show all games).")
     @app_commands.choices(
         type=[app_commands.Choice(name="Wins", value="wins"), app_commands.Choice(name="Losses", value="losses")],
-        game=[app_commands.Choice(name="Coinflip", value="coinflip")]
+        game=[app_commands.Choice(name="Coinflip", value="coinflip"), app_commands.Choice(name="Slots", value="slots")]
     )
     async def highroller(self, ctx: commands.Context, type: app_commands.Choice[str], game: Optional[app_commands.Choice[str]] = None):
         await ctx.defer()
@@ -223,9 +305,14 @@ class Economy(commands.Cog):
             name = (member.display_name if member else row["display_name"])
             place = medals[i] if i < 3 else f"`{i + 1}.`"
 
+            game_line = ""
+            if not game:
+                game_line = f"🎮 **{row["game"].capitalize()}**\n"
+
             content.append(
                 f"{place} **{name}**\n"
                 f":Runes: **{row['amount']:,}**\n"
+                f"{game_line}"
                 f"[Jump to Game]({row['message_url']})"
             )
 
