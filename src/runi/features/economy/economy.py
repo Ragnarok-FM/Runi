@@ -85,7 +85,7 @@ class Economy(commands.Cog):
         streak_label = f"Day {streak}" + (f"/{DAILY_STREAK_MAX}" if streak >= DAILY_STREAK_MAX else "")
 
         footer = (
-            f"Tomorrow: {next_payout:,} :Runes: (+{next_bonus} streak bonus)"
+            f"Tomorrow: {next_payout:,} Runes (+{next_bonus} streak bonus)"
             if streak < DAILY_STREAK_MAX
             else "Max streak reached! You're getting the full bonus every day."
         )
