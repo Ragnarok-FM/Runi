@@ -440,13 +440,16 @@ class Database:
         Returns {"success": bool, "reason": str, "won": bool, "result": str, "balance": int, "change": int}
         """
         import random
+
+        result = random.choice(["heads", "tails"])
+        won = result == choice
+        change = bet if won else -bet
+
         async with aiosqlite.connect(self.path) as db:
             user = await self._fetch_user(db, user_id, guild_id)
             if user["runeshards"] < bet:
                 return {"success": False, "reason": "insufficient_funds", "balance": user["runeshards"]}
-            result = random.choice(["heads", "tails"])
-            won = result == choice
-            change = bet if won else -bet
+            
             new_balance = user["runeshards"] + change
             await db.execute(
                 "UPDATE users SET runeshards = ? WHERE user_id = ? AND guild_id = ?",
@@ -487,26 +490,26 @@ class Database:
 
         paytable = {
             # Three of a kind
-            ("🍒", 3): 3,
-            ("🍋", 3): 4,
-            ("🍊", 3): 5,
-            ("🍇", 3): 7,
-            ("🔔", 3): 10,
-            ("⭐", 3): 15,
-            ("💎", 3): 30,
-            ("👑", 3): 60,
-            ("💰", 3): 120,
+            ("🍒", 3): 4,
+            ("🍋", 3): 5,
+            ("🍊", 3): 7,
+            ("🍇", 3): 9,
+            ("🔔", 3): 13,
+            ("⭐", 3): 20,
+            ("💎", 3): 40,
+            ("👑", 3): 80,
+            ("💰", 3): 160,
 
             # Two of a kind
-            ("🍒", 2): 0.6,
-            ("🍋", 2): 0.7,
-            ("🍊", 2): 0.8,
-            ("🍇", 2): 1.0,
-            ("🔔", 2): 1.4,
-            ("⭐", 2): 2.0,
-            ("💎", 2): 4.0,
-            ("👑", 2): 8.0,
-            ("💰", 2): 16.0,
+            ("🍒", 2): 0.8,
+            ("🍋", 2): 0.9,
+            ("🍊", 2): 1.1,
+            ("🍇", 2): 1.3,
+            ("🔔", 2): 1.9,
+            ("⭐", 2): 2.7,
+            ("💎", 2): 5.3,
+            ("👑", 2): 10.6,
+            ("💰", 2): 21.2,
         }
 
         symbol_names = tuple(symbols.keys())
@@ -534,7 +537,7 @@ class Database:
 
             if result.count(wild) == 3:
                 won = True
-                multiplier = 300
+                multiplier = 400
                 match_type = "Three Wilds"
 
             else:
