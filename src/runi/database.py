@@ -556,16 +556,16 @@ class Database:
 
                     if payout > multiplier:
                         multiplier = payout
-                        won = True
 
                         if matches == 3:
                             match_type = f"Three {symbol}"
                         else:
                             match_type = f"Two {symbol}"
 
-            payout = int(bet * multiplier) if won else 0
-            change = payout - bet
-            balance = user["runeshards"] + change
+            payout = int(bet * multiplier) if multiplier > 0 else 0
+            net_change = payout - bet
+            won = net_change > 0
+            balance = user["runeshards"] + net_change
 
             await db.execute(
                 "UPDATE users SET runeshards = ? WHERE user_id = ? AND guild_id = ?",
@@ -580,7 +580,7 @@ class Database:
                 "match_type": match_type,
                 "payout": payout,
                 "balance": balance,
-                "change": abs(change),
+                "change": abs(net_change),
             }
 
     # ── Store ──────────────────────────────────────────────────────────────────

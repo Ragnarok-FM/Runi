@@ -31,6 +31,56 @@ def _fmt_time(seconds: float) -> str:
     return " ".join(parts)
 
 
+def _parse_bet(value: str, balance: int) -> int:
+    normalized = value.strip().lower().replace("-", "").replace("_", "")
+
+    if normalized.startswith("bet:"):
+        normalized = normalized[4:].strip()
+
+    if normalized == "allin":
+        amount = balance
+    elif normalized == "half":
+        amount = balance // 2
+    elif normalized == "quarter":
+        amount = balance // 4
+    elif normalized.endswith("%"):
+        try:
+            percentage = int(normalized[:-1])
+        except ValueError as error:
+            raise ValueError from error
+
+        if not 1 <= percentage <= 100:
+            raise ValueError
+
+        amount = balance * percentage // 100
+    else:
+        try:
+            amount = int(normalized)
+        except ValueError as error:
+            raise ValueError from error
+
+    if amount <= 0:
+        raise ValueError
+
+    return amount
+
+
+BET_SUGGESTIONS = [
+    ("All-in", "allin"),
+    ("Half", "half"),
+    ("Quarter", "quarter"),
+]
+
+
+async def bet_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    current = current.lower().strip()
+
+    return [
+        app_commands.Choice(name=name, value=value)
+        for name, value in BET_SUGGESTIONS
+        if not current or current in name.lower() or current in value.lower()
+    ][:25]
+
 class Economy(commands.Cog):
     def __init__(self, bot: 'RuniClient'):
         self.bot = bot
@@ -123,19 +173,29 @@ class Economy(commands.Cog):
     # ── /coinflip ──────────────────────────────────────────────────────────────
     @commands.guild_only()
     @commands.hybrid_command(name="coinflip", description="Bet your Runes on a coin flip!")
-    @app_commands.describe(choice="Pick heads or tails.", bet="How many Runes to bet.")
+    @app_commands.autocomplete(bet=bet_autocomplete)
+    @app_commands.describe(choice="Pick heads or tails.", bet="Enter an amount, whole percentage (i.e. 30%), or preset such as all, half, or quarter.")
     @app_commands.choices(choice=[
         app_commands.Choice(name="Heads", value="heads"),
         app_commands.Choice(name="Tails", value="tails"),
     ])
-    async def coinflip(self, ctx: commands.Context, choice: app_commands.Choice[str], bet: int):
+    async def coinflip(self, ctx: commands.Context, choice: app_commands.Choice[str], bet: str):
+        guild = ctx.guild
+        assert guild is not None
+
+        user = await self.bot.db.get_user(ctx.author.id, guild.id)
+
+        try:
+            bet = _parse_bet(bet, user["runeshards"])
+        except ValueError:
+            embed = self.bot.embed_renderer.render("slots_invalid_bet", {})
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return
+
         if bet <= 0:
             embed = self.bot.embed_renderer.render("coinflip_invalid_bet", {})
             await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
-
-        guild = ctx.guild
-        assert guild is not None
 
         result = await self.bot.db.coinflip(ctx.author.id, guild.id, bet, choice.value)
 
@@ -178,17 +238,27 @@ class Economy(commands.Cog):
     # ── /slots ───────────────────────────────────────────────────────────
     @commands.guild_only()
     @commands.hybrid_command(name="slots", description="Bet your Runes on a slot machine!")
-    @app_commands.describe(bet="How many Runes to bet.")
-    async def slots(self, ctx: commands.Context, bet: int):
+    @app_commands.autocomplete(bet=bet_autocomplete)
+    @app_commands.describe(bet="Enter an amount, whole percentage (i.e. 30%), or preset such as all, half, or quarter.")
+    async def slots(self, ctx: commands.Context, bet: str):
+        guild = ctx.guild
+        assert guild is not None
+
+        user = await self.bot.db.get_user(ctx.author.id, guild.id)
+
+        try:
+            bet = _parse_bet(bet, user["runeshards"])
+        except ValueError:
+            embed = self.bot.embed_renderer.render("slots_invalid_bet", {})
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return
+
         if bet <= 0:
             embed = self.bot.embed_renderer.render("slots_invalid_bet", {})
             await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
-        guild = ctx.guild
-        assert guild is not None
 
-        user = await self.bot.db.get_user(ctx.author.id, guild.id)
         if user["runeshards"] < bet:
             embed = self.bot.embed_renderer.render("error_insufficient_funds", {
                 "balance": user["runeshards"]
@@ -206,10 +276,10 @@ class Economy(commands.Cog):
             return
 
         stages = [
-            ("🎰", "🎰", "🎰", 0.3),
-            (results["symbols"][0], "🎰", "🎰", 0.25),
-            (results["symbols"][0], results["symbols"][1], "🎰", 0.25),
-            (results["symbols"][0], results["symbols"][1], results["symbols"][2], 0.4),
+            ("🎰", "🎰", "🎰", 0.6),
+            (results["symbols"][0], "🎰", "🎰", 0.5),
+            (results["symbols"][0], results["symbols"][1], "🎰", 0.5),
+            (results["symbols"][0], results["symbols"][1], results["symbols"][2], 0.8),
         ]
 
         embed = self.bot.embed_renderer.render("slots_spinning", {
@@ -227,14 +297,22 @@ class Economy(commands.Cog):
                 "slot3": s3,
             })
             await message.edit(embed=embed)
-            
 
-        outcome = "You Won!" if results["won"] else "You Lost!"
-        description = (
-            f"You hit **{results['match_type']}**! You won **{results['payout']:,} :Runes:**!"
-            if results["won"]
-            else f"No match. You lost {bet:,} :Runes:."
-        )
+        if results["won"]:
+            outcome = "You Won!"
+            description = (
+                f"You hit **{results['match_type']}**! "
+                f"You won **{results['payout']:,} :Runes:**!"
+            )
+        elif results["payout"] > 0:
+            outcome = "You Lost!"
+            description = (
+                f"You hit **{results['match_type']}**, but the payout was less than "
+                f"your bet. You lost **{results['change']:,} :Runes:**."
+            )
+        else:
+            outcome = "You Lost!"
+            description = f"No match. You lost **{bet:,} :Runes:**."
 
         embed = self.bot.embed_renderer.render("slots_result", {
             "slot1": results["symbols"][0],
@@ -252,7 +330,7 @@ class Economy(commands.Cog):
             display_name=ctx.author.display_name,
             game="slots",
             won=results["won"],
-            amount=bet,
+            amount=results["change"],
             message_url=message.jump_url,
         )
 
