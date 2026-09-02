@@ -289,7 +289,7 @@ class Economy(commands.Cog):
         })
         message = await ctx.send(embed=embed)
 
-        for s1, s2, s3, delay in stages[1:]:
+        for s1, s2, s3, delay in stages[1:-1]:
             await asyncio.sleep(delay)
             embed = self.bot.embed_renderer.render("slots_spinning", {
                 "slot1": s1,
@@ -297,6 +297,8 @@ class Economy(commands.Cog):
                 "slot3": s3,
             })
             await message.edit(embed=embed)
+
+        await asyncio.sleep(stages[-1][3])
 
         if results["won"]:
             outcome = "You Won!"
