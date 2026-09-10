@@ -62,7 +62,7 @@ RESOURCES = {
         "converted_label": None,
     },
     "tech_potions": {
-        "label": "Tech Potions",
+        "label": "Clan Vials",
         "emoji": "TechPotions",
         "style": "success",
         "has_points": False,
