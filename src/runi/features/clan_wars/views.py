@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import discord
 from discord import ui
 
-from .resources import RESOURCES, PARTICIPANT_ROLE_ID
+from .resources import RESOURCES, PARTICIPANT_ROLE_ID, REQUIRE_PARTICIPANT_ROLE
 from .modal import ResourceSubmitModal
 
 if TYPE_CHECKING:
@@ -44,10 +44,11 @@ class PanelView(ui.View):
     def _make_resource_callback(self, resource_key: str):
         async def callback(interaction: discord.Interaction):
             member = interaction.user
-            if not isinstance(member, discord.Member) or not any(r.id == PARTICIPANT_ROLE_ID for r in member.roles):
-                embed = self.bot.embed_renderer.render("clan_war_no_role", {})
-                await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=6)
-                return
+            if REQUIRE_PARTICIPANT_ROLE:
+                if not isinstance(member, discord.Member) or not any(r.id == PARTICIPANT_ROLE_ID for r in member.roles):
+                    embed = self.bot.embed_renderer.render("clan_war_no_role", {})
+                    await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=6)
+                    return
 
             cog = self.bot.get_cog("ClanWars")
             await interaction.response.send_modal(

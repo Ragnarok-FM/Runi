@@ -782,22 +782,28 @@ class Database:
             )
             await db.commit()
 
-    async def get_clan_war_leaderboard(self, guild_id: int, defaults: dict[str, float]) -> dict:
+    async def get_clan_war_leaderboard(self, guild_id: int, defaults: dict[str, float], convert_per: dict[str, int]) -> dict:
         """
         Builds the full panel dataset for a guild.
+
+        `convert_per` maps resource -> how many raw units make up 1
+        point-earning unit (e.g. 50 Clockwinders = 1 Mount Summon). Use 1
+        for resources with no conversion (points = amount * rate directly).
 
         Returns {
             "members": [
                 {
                     "user_id": int,
                     "resources": {resource: amount, ...},
+                    "converted": {resource: converted_unit_count, ...},
                     "points": float,
                     "updated_at": float,   # most recent submission across all resources
                 },
                 ...
             ],  # sorted by points DESC
             "totals": {resource: amount, ...},
-            "total_points": float,
+            "totals_converted": {resource: converted_unit_count, ...},
+            "total_points": float,   # exact sum of every member's points, never recalculated separately
             "rates": {resource: points_per_unit, ...},
         }
         """
@@ -825,19 +831,28 @@ class Database:
                 totals[resource] += amount
 
         for entry in members.values():
+            entry["converted"] = {
+                r: entry["resources"].get(r, 0) // convert_per.get(r, 1) for r in defaults
+            }
             entry["points"] = sum(
-                entry["resources"].get(r, 0) * rates.get(r, 0) for r in defaults
+                entry["converted"][r] * rates.get(r, 0) for r in defaults
             )
 
-        total_points = sum(
-            totals.get(r, 0) * rates.get(r, 0) for r in defaults
-        )
+        # Total points is always the exact sum of member points, never
+        # recalculated independently from `totals` — this guarantees the
+        # Clan Totals section can never disagree with the member rows.
+        total_points = sum(entry["points"] for entry in members.values())
+
+        totals_converted = {
+            r: totals.get(r, 0) // convert_per.get(r, 1) for r in defaults
+        }
 
         member_list = sorted(members.values(), key=lambda e: e["points"], reverse=True)
 
         return {
             "members": member_list,
             "totals": totals,
+            "totals_converted": totals_converted,
             "total_points": total_points,
             "rates": rates,
         }

@@ -7,7 +7,7 @@ from discord.ext import commands, tasks
 
 from runi.utils import log
 
-from .resources import RESOURCES, DEFAULT_RATES, SCORING_RESOURCES, MEMBERS_PER_PAGE, STALE_AFTER_SECONDS, AUTO_REFRESH_SECONDS
+from .resources import RESOURCES, DEFAULT_RATES, CONVERT_PER, SCORING_RESOURCES, MEMBERS_PER_PAGE, STALE_AFTER_SECONDS, AUTO_REFRESH_SECONDS
 from .views import PanelView
 
 if TYPE_CHECKING:
@@ -46,34 +46,44 @@ class ClanWars(commands.Cog):
 
     # ── Panel rendering ──────────────────────────────────────────────────────
 
-    def _format_member_row(self, rank: int, entry: dict) -> str:
+    def _format_member_row(self, rank: int, entry: dict, rates: dict) -> str:
         name = entry.get("display_name", f"Unknown ({entry['user_id']})")
 
         stale = "⚠️ " if entry["updated_at"] and (time.time() - entry["updated_at"]) > STALE_AFTER_SECONDS else ""
-        header = f"`#{rank}` **{name}** {stale}— {entry['points']:,.0f} pts (Updated {_relative_time(entry['updated_at'])})"
+        header = f"`#{rank}` **{name}** {stale}— {entry['points']:,.0f} pts (Updated `{_relative_time(entry['updated_at'])}`)"
 
         parts = []
         for key, meta in RESOURCES.items():
             amount = entry["resources"].get(key, 0)
-            token = f":{meta['emoji']}:"
-            parts.append(f"{token} {amount:,}")
+            if meta["converted_label"]:
+                converted = entry["converted"].get(key, 0)
+                pts = converted * rates.get(key, 0)
+                parts.append(f"{meta['label']}: `{amount:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
+            elif meta["has_points"]:
+                pts = amount * rates.get(key, 0)
+                parts.append(f"{meta['label']}: `{amount:,}` (`{pts:,.0f}` pts)")
+            else:
+                parts.append(f"{meta['label']}: `{amount:,}`")
 
         return f"{header}\n└ {' | '.join(parts)}"
 
     def _format_totals(self, data: dict) -> str:
-        lines = [f"🏆 **Total Points:** {data['total_points']:,.0f} pts", ""]
+        lines = ["📊 **Clan Totals**", f"🏆 **Total Points:** `{data['total_points']:,.0f}` pts", ""]
         for key, meta in RESOURCES.items():
-            token = f":{meta['emoji']}:"
             total = data["totals"].get(key, 0)
-            if meta["has_points"]:
+            if meta["converted_label"]:
+                converted = data["totals_converted"].get(key, 0)
+                pts = converted * data["rates"].get(key, 0)
+                lines.append(f"• **{meta['label']}:** `{total:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
+            elif meta["has_points"]:
                 pts = total * data["rates"].get(key, 0)
-                lines.append(f"• {token} **{meta['label']}:** {total:,} ({pts:,.0f} pts)")
+                lines.append(f"• **{meta['label']}:** `{total:,}` (`{pts:,.0f}` pts)")
             else:
-                lines.append(f"• {token} **{meta['label']}:** {total:,}")
+                lines.append(f"• **{meta['label']}:** `{total:,}`")
         return "\n".join(lines)
 
     async def render_panel_embed(self, guild: discord.Guild) -> discord.Embed:
-        data = await self.bot.db.get_clan_war_leaderboard(guild.id, DEFAULT_RATES)
+        data = await self.bot.db.get_clan_war_leaderboard(guild.id, DEFAULT_RATES, CONVERT_PER)
 
         # Attach display names now (requires the guild object, not available in the DB layer)
         for entry in data["members"]:
@@ -89,7 +99,7 @@ class ClanWars(commands.Cog):
         page_members = data["members"][start:start + MEMBERS_PER_PAGE]
 
         rows = [
-            self._format_member_row(start + i + 1, entry)
+            self._format_member_row(start + i + 1, entry, data["rates"])
             for i, entry in enumerate(page_members)
         ]
         if not rows:

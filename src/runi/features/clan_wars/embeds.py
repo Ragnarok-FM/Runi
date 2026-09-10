@@ -5,7 +5,7 @@ EMBEDS = {
         "title": "⚔️ Clan Wars — Resource Tracker",
         "description": "{content}",
         "color": "gold",
-        "footer": "Runi • Clan Wars | Page {page} of {total_pages} • Auto-updates every {refresh_minutes}m • {timestamp_label}"
+        "footer": "Runi • Clan Wars | Page {page} of {total_pages} • Auto-updates every {refresh_minutes}m • ⚠️ = Stale (7+ days) • {timestamp_label}"
     },
 
     "clan_war_no_role": {
