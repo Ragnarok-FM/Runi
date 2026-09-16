@@ -55,15 +55,16 @@ class ClanWars(commands.Cog):
         parts = []
         for key, meta in RESOURCES.items():
             amount = entry["resources"].get(key, 0)
+            name_part = f":{meta['emoji']}:" if meta["show_emoji"] else f"{meta['label']}:"
             if meta["converted_label"]:
                 converted = entry["converted"].get(key, 0)
                 pts = converted * rates.get(key, 0)
-                parts.append(f"{meta['label']}: `{amount:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
+                parts.append(f"{name_part} `{amount:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
             elif meta["has_points"]:
                 pts = amount * rates.get(key, 0)
-                parts.append(f"{meta['label']}: `{amount:,}` (`{pts:,.0f}` pts)")
+                parts.append(f"{name_part} `{amount:,}` (`{pts:,.0f}` pts)")
             else:
-                parts.append(f"{meta['label']}: `{amount:,}`")
+                parts.append(f"{name_part} `{amount:,}`")
 
         return f"{header}\n└ {' | '.join(parts)}"
 
@@ -71,15 +72,16 @@ class ClanWars(commands.Cog):
         lines = ["📊 **Clan Totals**", f"🏆 **Total Points:** `{data['total_points']:,.0f}` pts", ""]
         for key, meta in RESOURCES.items():
             total = data["totals"].get(key, 0)
+            name_part = f":{meta['emoji']}:" if meta["show_emoji"] else f"**{meta['label']}:**"
             if meta["converted_label"]:
                 converted = data["totals_converted"].get(key, 0)
                 pts = converted * data["rates"].get(key, 0)
-                lines.append(f"• **{meta['label']}:** `{total:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
+                lines.append(f"• {name_part} `{total:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
             elif meta["has_points"]:
                 pts = total * data["rates"].get(key, 0)
-                lines.append(f"• **{meta['label']}:** `{total:,}` (`{pts:,.0f}` pts)")
+                lines.append(f"• {name_part} `{total:,}` (`{pts:,.0f}` pts)")
             else:
-                lines.append(f"• **{meta['label']}:** `{total:,}`")
+                lines.append(f"• {name_part} `{total:,}`")
         return "\n".join(lines)
 
     async def render_panel_embed(self, guild: discord.Guild) -> discord.Embed:

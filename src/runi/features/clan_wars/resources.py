@@ -9,7 +9,8 @@
 RESOURCES = {
     "hammers": {
         "label": "Hammers",
-        "emoji": "Hammers",
+        "emoji": "FMHammer",
+        "show_emoji": True,
         "style": "primary",   # blue
         "has_points": False,
         "default_rate": 0,
@@ -18,7 +19,8 @@ RESOURCES = {
     },
     "clockwinders": {
         "label": "Clockwinders",
-        "emoji": "Clockwinders",
+        "emoji": "Clockwinder",
+        "show_emoji": True,
         "style": "primary",
         "has_points": True,
         "default_rate": 600,       # points per Mount Summon
@@ -27,7 +29,8 @@ RESOURCES = {
     },
     "eggshells": {
         "label": "Eggshells",
-        "emoji": "Eggshells",
+        "emoji": "Eggshell",
+        "show_emoji": True,
         "style": "primary",
         "has_points": False,
         "default_rate": 0,
@@ -36,7 +39,8 @@ RESOURCES = {
     },
     "skill_tickets": {
         "label": "Skill Tickets",
-        "emoji": "SkillTickets",
+        "emoji": "SkillTicket",
+        "show_emoji": True,
         "style": "primary",
         "has_points": True,
         "default_rate": 125,       # points per Skill summoned
@@ -45,7 +49,8 @@ RESOURCES = {
     },
     "mount_merges": {
         "label": "Mount Merges",
-        "emoji": "MountMerges",
+        "emoji": "MountMerge",
+        "show_emoji": True,
         "style": "success",   # green
         "has_points": True,
         "default_rate": 600,
@@ -54,7 +59,8 @@ RESOURCES = {
     },
     "pet_merges": {
         "label": "Pet Merges",
-        "emoji": "PetMerges",
+        "emoji": "PetMerge",
+        "show_emoji": True,
         "style": "success",
         "has_points": True,
         "default_rate": 1250,
@@ -63,7 +69,8 @@ RESOURCES = {
     },
     "tech_potions": {
         "label": "Clan Vials",
-        "emoji": "TechPotions",
+        "emoji": "GreenVial",
+        "show_emoji": True,
         "style": "success",
         "has_points": False,
         "default_rate": 0,
@@ -72,7 +79,8 @@ RESOURCES = {
     },
     "gems_for_tech": {
         "label": "Gems for Tech",
-        "emoji": "GemsForTech",
+        "emoji": "FMGem",
+        "show_emoji": True,
         "style": "success",
         "has_points": False,
         "default_rate": 0,
