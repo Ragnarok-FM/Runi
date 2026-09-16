@@ -24,7 +24,7 @@ EMBEDS = {
 
     "clan_war_invalid_amount": {
         "title": "❌ Invalid Amount",
-        "description": "Please enter a whole number of 0 or greater.",
+        "description": "That doesn't look like a valid number. Try something like `12500`, `12,500`, or `12.5k`.",
         "color": "red",
         "footer": "Runi • Clan Wars"
     },
@@ -60,6 +60,20 @@ EMBEDS = {
     "clan_war_invalid_resource": {
         "title": "❌ Unknown Resource",
         "description": "`{resource}` isn't a recognized resource. Valid options: {valid_resources}.",
+        "color": "red",
+        "footer": "Runi • Clan Wars"
+    },
+
+    "clan_war_my_resources": {
+        "title": "📋 Your Clan Wars Submissions",
+        "description": "{content}",
+        "color": "blurple",
+        "footer": "Runi • Clan Wars"
+    },
+
+    "clan_war_no_submissions": {
+        "title": "📋 No Submissions Yet",
+        "description": "You haven't submitted any resources this cycle. Use the buttons on the Clan Wars panel to add yours!",
         "color": "red",
         "footer": "Runi • Clan Wars"
     }

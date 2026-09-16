@@ -7,7 +7,7 @@ from discord.ext import commands, tasks
 
 from runi.utils import log
 
-from .resources import RESOURCES, DEFAULT_RATES, CONVERT_PER, SCORING_RESOURCES, MEMBERS_PER_PAGE, STALE_AFTER_SECONDS, AUTO_REFRESH_SECONDS
+from .resources import RESOURCES, DEFAULT_RATES, CONVERT_PER, SCORING_RESOURCES, MEMBERS_PER_PAGE, STALE_AFTER_SECONDS, AUTO_REFRESH_SECONDS, PARTICIPANT_ROLE_ID, REQUIRE_PARTICIPANT_ROLE
 from .views import PanelView
 
 if TYPE_CHECKING:
@@ -190,6 +190,44 @@ class ClanWars(commands.Cog):
         embed = self.bot.embed_renderer.render("clan_war_panel_created", {})
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    # ── /myresources ──────────────────────────────────────────────────────────
+    @app_commands.command(name="myresources", description="See your own submitted Clan Wars resources (only visible to you).")
+    async def myresources(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        assert guild is not None
+        member = interaction.user
+
+        if REQUIRE_PARTICIPANT_ROLE:
+            if not isinstance(member, discord.Member) or not any(r.id == PARTICIPANT_ROLE_ID for r in member.roles):
+                embed = self.bot.embed_renderer.render("clan_war_no_role", {})
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+
+        await interaction.response.defer(ephemeral=True)
+
+        data = await self.bot.db.get_clan_war_leaderboard(guild.id, DEFAULT_RATES, CONVERT_PER)
+
+        rank = None
+        entry = None
+        for i, m in enumerate(data["members"]):
+            if m["user_id"] == interaction.user.id:
+                rank = i + 1
+                entry = m
+                break
+
+        if entry is None:
+            embed = self.bot.embed_renderer.render("clan_war_no_submissions", {})
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        entry["display_name"] = interaction.user.display_name
+        row = self._format_member_row(rank, entry, data["rates"])
+
+        embed = self.bot.embed_renderer.render("clan_war_my_resources", {
+            "content": row,
+        })
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     # ── /setresourcepoints (admin) ───────────────────────────────────────────
     @app_commands.command(name="setresourcepoints", description="[Admin] Change the points-per-unit rate for a resource.")
     @app_commands.describe(resource="Which resource to update.", points="New points-per-unit value.")
@@ -231,7 +269,7 @@ class ClanWars(commands.Cog):
     async def _admin_error(self, interaction: discord.Interaction, error: Exception):
         if isinstance(error, app_commands.MissingPermissions):
             embed = self.bot.embed_renderer.render("error_missing_admin_permissions", {})
-            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=6)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
             log.error(f"Clan Wars command error: {error}")
             raise error

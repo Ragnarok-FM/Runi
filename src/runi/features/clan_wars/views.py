@@ -47,7 +47,7 @@ class PanelView(ui.View):
             if REQUIRE_PARTICIPANT_ROLE:
                 if not isinstance(member, discord.Member) or not any(r.id == PARTICIPANT_ROLE_ID for r in member.roles):
                     embed = self.bot.embed_renderer.render("clan_war_no_role", {})
-                    await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=6)
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
                     return
 
             cog = self.bot.get_cog("ClanWars")
