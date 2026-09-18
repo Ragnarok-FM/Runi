@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import discord
 from discord import ui
 
-from .resources import RESOURCES, PARTICIPANT_ROLE_ID, REQUIRE_PARTICIPANT_ROLE
+from .resources import RESOURCES, find_member_clan
 from .modal import ResourceSubmitModal
 
 if TYPE_CHECKING:
@@ -12,9 +12,18 @@ if TYPE_CHECKING:
 
 class PanelView(ui.View):
     """
-    Persistent view attached to the live Clan Wars panel message.
+    Persistent view attached to every clan's live Clan Wars panel message.
 
-    One instance of this view is registered globally at bot startup via
+    This one view class is shared by all clans' panels — the buttons are
+    generic (not tied to a specific clan_id in their custom_id), because:
+      - Resource submission routes to whichever clan the clicking member's
+        own roles match (looked up fresh on every click), not to whichever
+        panel they happened to click the button on.
+      - Pagination looks up which clan owns the clicked message via a
+        reverse DB lookup (channel_id + message_id -> clan_id), so no
+        clan-specific custom_id is needed there either.
+
+    One instance is registered globally at bot startup via
     `bot.add_view(PanelView(bot))` so the buttons keep working across
     restarts (requires timeout=None + fixed custom_id on every component —
     both satisfied below).
@@ -44,11 +53,16 @@ class PanelView(ui.View):
     def _make_resource_callback(self, resource_key: str):
         async def callback(interaction: discord.Interaction):
             member = interaction.user
-            if REQUIRE_PARTICIPANT_ROLE:
-                if not isinstance(member, discord.Member) or not any(r.id == PARTICIPANT_ROLE_ID for r in member.roles):
-                    embed = self.bot.embed_renderer.render("clan_war_no_role", {})
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
-                    return
+            guild = interaction.guild
+            assert guild is not None
+
+            clans = await self.bot.db.get_clans(guild.id)
+            clan = find_member_clan(member, clans) if isinstance(member, discord.Member) else None
+
+            if clan is None:
+                embed = self.bot.embed_renderer.render("clan_war_no_role", {})
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
 
             cog = self.bot.get_cog("ClanWars")
             await interaction.response.send_modal(
@@ -59,12 +73,20 @@ class PanelView(ui.View):
 
     def _page_callback(self, direction: int):
         async def callback(interaction: discord.Interaction):
-            guild = interaction.guild
-            assert guild is not None
+            await interaction.response.defer()
+
+            message = interaction.message
+            if message is None:
+                return
+
+            clan_id = await self.bot.db.get_clan_id_by_panel_message(interaction.channel_id, message.id)
+            if clan_id is None:
+                # Panel message isn't registered to any clan (shouldn't normally
+                # happen) — nothing sensible to paginate.
+                return
 
             cog = self.bot.get_cog("ClanWars")
-            cog.shift_page(guild.id, direction)
-            await interaction.response.defer()
-            await cog.refresh_panel(guild.id)
+            cog.shift_page(clan_id, direction)
+            await cog.refresh_panel(clan_id)
 
         return callback

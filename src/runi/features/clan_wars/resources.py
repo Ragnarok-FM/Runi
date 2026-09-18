@@ -94,14 +94,29 @@ DEFAULT_RATES = {key: meta["default_rate"] for key, meta in RESOURCES.items()}
 CONVERT_PER = {key: meta["convert_per"] for key, meta in RESOURCES.items()}
 SCORING_RESOURCES = [key for key, meta in RESOURCES.items() if meta["has_points"]]
 
-# Role allowed to submit resources via the panel buttons
-PARTICIPANT_ROLE_ID = 1447639376157868289
-
-# Set to False to let anyone use the panel buttons (useful for dev/testing
-# on a server where the participant role doesn't exist yet). Set back to
-# True before going live on the real server.
-REQUIRE_PARTICIPANT_ROLE = False
-
 MEMBERS_PER_PAGE = 10
 STALE_AFTER_SECONDS = 7 * 24 * 60 * 60  # 7 days
 AUTO_REFRESH_SECONDS = 10 * 60  # 10 minutes
+
+
+def find_member_clan(member, clans: list[dict]) -> dict | None:
+    """
+    Given a Discord Member and the list of clans registered for their guild
+    (as returned by Database.get_clans), returns the clan dict for the first
+    of the member's roles that matches a registered clan's role_id, or None
+    if they don't hold any registered clan's role.
+
+    "First matching role" resolves the (rare, accidental) case of a member
+    holding two different clans' roles at once — deterministic and simple,
+    with the expectation that a misconfiguration like that gets noticed and
+    fixed by an admin shortly after.
+    """
+    if not clans:
+        return None
+
+    role_id_to_clan = {c["role_id"]: c for c in clans}
+    for role in member.roles:
+        clan = role_id_to_clan.get(role.id)
+        if clan:
+            return clan
+    return None

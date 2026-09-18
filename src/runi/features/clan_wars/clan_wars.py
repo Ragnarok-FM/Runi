@@ -7,7 +7,7 @@ from discord.ext import commands, tasks
 
 from runi.utils import log
 
-from .resources import RESOURCES, DEFAULT_RATES, CONVERT_PER, SCORING_RESOURCES, MEMBERS_PER_PAGE, STALE_AFTER_SECONDS, AUTO_REFRESH_SECONDS, PARTICIPANT_ROLE_ID, REQUIRE_PARTICIPANT_ROLE
+from .resources import RESOURCES, DEFAULT_RATES, CONVERT_PER, SCORING_RESOURCES, MEMBERS_PER_PAGE, STALE_AFTER_SECONDS, AUTO_REFRESH_SECONDS, find_member_clan
 from .views import PanelView
 
 if TYPE_CHECKING:
@@ -31,18 +31,21 @@ def _relative_time(ts: float) -> str:
 class ClanWars(commands.Cog):
     def __init__(self, bot: 'RuniClient'):
         self.bot = bot
-        self.current_page: dict[int, int] = {}   # guild_id -> zero-indexed page
+        self.current_page: dict[int, int] = {}   # clan_id -> zero-indexed page
         self.auto_refresh.start()
 
     def cog_unload(self):
         self.auto_refresh.cancel()
 
     async def cog_load(self):
-        # Re-register the persistent view so buttons survive bot restarts.
+        # A single generic persistent view covers every clan's panel — the
+        # buttons resolve which clan they apply to dynamically (see views.py),
+        # so nothing clan-specific needs registering here, even for clans
+        # created after this bot restart.
         self.bot.add_view(PanelView(self.bot))
 
-    def shift_page(self, guild_id: int, direction: int) -> None:
-        self.current_page[guild_id] = max(0, self.current_page.get(guild_id, 0) + direction)
+    def shift_page(self, clan_id: int, direction: int) -> None:
+        self.current_page[clan_id] = max(0, self.current_page.get(clan_id, 0) + direction)
 
     # ── Panel rendering ──────────────────────────────────────────────────────
 
@@ -84,18 +87,19 @@ class ClanWars(commands.Cog):
                 lines.append(f"• {name_part} `{total:,}`")
         return "\n".join(lines)
 
-    async def render_panel_embed(self, guild: discord.Guild) -> discord.Embed:
-        data = await self.bot.db.get_clan_war_leaderboard(guild.id, DEFAULT_RATES, CONVERT_PER)
+    async def render_panel_embed(self, guild: discord.Guild, clan: dict) -> discord.Embed:
+        clan_id = clan["clan_id"]
+        data = await self.bot.db.get_clan_war_leaderboard(clan_id, DEFAULT_RATES, CONVERT_PER)
 
         # Attach display names now (requires the guild object, not available in the DB layer)
         for entry in data["members"]:
             member = guild.get_member(entry["user_id"])
             entry["display_name"] = member.display_name if member else f"Unknown ({entry['user_id']})"
 
-        page = self.current_page.get(guild.id, 0)
+        page = self.current_page.get(clan_id, 0)
         total_pages = max(1, (len(data["members"]) + MEMBERS_PER_PAGE - 1) // MEMBERS_PER_PAGE)
         page = min(page, total_pages - 1)
-        self.current_page[guild.id] = page
+        self.current_page[clan_id] = page
 
         start = page * MEMBERS_PER_PAGE
         page_members = data["members"][start:start + MEMBERS_PER_PAGE]
@@ -113,6 +117,7 @@ class ClanWars(commands.Cog):
         timestamp_label = f"Newest update: {_relative_time(newest_update)}" if newest_update else "No submissions yet"
 
         return self.bot.embed_renderer.render("clan_war_panel", {
+            "clan_name": clan["name"],
             "content": content,
             "page": page + 1,
             "total_pages": total_pages,
@@ -120,12 +125,16 @@ class ClanWars(commands.Cog):
             "timestamp_label": timestamp_label,
         })
 
-    async def refresh_panel(self, guild_id: int) -> None:
-        panel = await self.bot.db.get_clan_war_panel(guild_id)
+    async def refresh_panel(self, clan_id: int) -> None:
+        clan = await self.bot.db.get_clan(clan_id)
+        if not clan:
+            return
+
+        panel = await self.bot.db.get_clan_war_panel(clan_id)
         if not panel:
             return
 
-        guild = self.bot.get_guild(guild_id)
+        guild = self.bot.get_guild(clan["guild_id"])
         if not guild:
             return
 
@@ -136,45 +145,96 @@ class ClanWars(commands.Cog):
         try:
             message = await channel.fetch_message(panel["message_id"])
         except discord.NotFound:
-            log.error(f"Clan Wars panel message missing in guild {guild_id} — needs re-setup via /resourcepanel setup")
+            log.error(f"Clan Wars panel message missing for clan '{clan['name']}' (id {clan_id}) — needs re-setup via /resourcepanel setup")
             return
         except discord.HTTPException as exc:
-            log.error(f"Failed to fetch Clan Wars panel message in guild {guild_id}: {exc}")
+            log.error(f"Failed to fetch Clan Wars panel message for clan '{clan['name']}': {exc}")
             return
 
-        embed = await self.render_panel_embed(guild)
+        embed = await self.render_panel_embed(guild, clan)
         try:
             await message.edit(embed=embed, view=PanelView(self.bot))
         except discord.HTTPException as exc:
-            log.error(f"Failed to edit Clan Wars panel in guild {guild_id}: {exc}")
+            log.error(f"Failed to edit Clan Wars panel for clan '{clan['name']}': {exc}")
 
     @tasks.loop(seconds=AUTO_REFRESH_SECONDS)
     async def auto_refresh(self):
         for guild_id in list(self.bot.guild_ids):
             try:
-                await self.refresh_panel(guild_id)
+                clans = await self.bot.db.get_clans(guild_id)
             except Exception as exc:
-                log.error(f"Auto-refresh failed for guild {guild_id}: {exc}")
+                log.error(f"Auto-refresh: failed to list clans for guild {guild_id}: {exc}")
+                continue
+
+            for clan in clans:
+                try:
+                    await self.refresh_panel(clan["clan_id"])
+                except Exception as exc:
+                    log.error(f"Auto-refresh failed for clan '{clan['name']}' (id {clan['clan_id']}): {exc}")
 
     @auto_refresh.before_loop
     async def before_auto_refresh(self):
         await self.bot.wait_until_ready()
 
+    # ── Shared clan-selector autocomplete (used by 3 admin commands below) ────
+    async def _clan_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
+        guild = interaction.guild
+        if guild is None:
+            return []
+        clans = await self.bot.db.get_clans(guild.id)
+        return [
+            app_commands.Choice(name=c["name"], value=c["clan_id"])
+            for c in clans if current.lower() in c["name"].lower()
+        ][:25]
+
+    # ── /register (admin) ────────────────────────────────────────────────────
+    @app_commands.command(name="register", description="[Admin] Register a new clan and the Discord role that identifies its members.")
+    @app_commands.describe(
+        clan="Display name for this clan (shown on their panel).",
+        role="The Discord role that identifies this clan's members.",
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True)
+    async def register(self, interaction: discord.Interaction, clan: str, role: discord.Role):
+        guild = interaction.guild
+        assert guild is not None
+
+        clan_id = await self.bot.db.register_clan(guild.id, clan, role.id)
+
+        if clan_id is None:
+            embed = self.bot.embed_renderer.render("clan_role_already_registered", {"role": role.mention})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        embed = self.bot.embed_renderer.render("clan_registered", {
+            "name": clan,
+            "role": role.mention,
+        })
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     # ── /resourcepanel setup (admin) ─────────────────────────────────────────
     resourcepanel = app_commands.Group(name="resourcepanel", description="Manage the Clan Wars panel.")
 
-    @resourcepanel.command(name="setup", description="[Admin] Post the live Clan Wars panel in this channel.")
+    @resourcepanel.command(name="setup", description="[Admin] Post a clan's live Clan Wars panel in this channel.")
+    @app_commands.describe(clan="Which registered clan this panel is for.")
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.default_permissions(administrator=True)
-    async def resourcepanel_setup(self, interaction: discord.Interaction):
+    async def resourcepanel_setup(self, interaction: discord.Interaction, clan: int):
         guild = interaction.guild
         assert guild is not None
         channel = interaction.channel
         assert isinstance(channel, (discord.TextChannel, discord.Thread))
 
+        clan_row = await self.bot.db.get_clan(clan)
+        if not clan_row or clan_row["guild_id"] != guild.id:
+            embed = self.bot.embed_renderer.render("clan_not_found", {})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
         await interaction.response.defer(ephemeral=True)
 
         placeholder_embed = self.bot.embed_renderer.render("clan_war_panel", {
+            "clan_name": clan_row["name"],
             "content": "Setting up...",
             "page": 1,
             "total_pages": 1,
@@ -183,11 +243,12 @@ class ClanWars(commands.Cog):
         })
         message = await channel.send(embed=placeholder_embed, view=PanelView(self.bot))
 
-        await self.bot.db.set_clan_war_panel(guild.id, channel.id, message.id)
-        self.current_page[guild.id] = 0
-        await self.refresh_panel(guild.id)
+        clan_id = clan_row["clan_id"]
+        await self.bot.db.set_clan_war_panel(clan_id, channel.id, message.id)
+        self.current_page[clan_id] = 0
+        await self.refresh_panel(clan_id)
 
-        embed = self.bot.embed_renderer.render("clan_war_panel_created", {})
+        embed = self.bot.embed_renderer.render("clan_war_panel_created", {"clan_name": clan_row["name"]})
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ── /myresources ──────────────────────────────────────────────────────────
@@ -197,15 +258,17 @@ class ClanWars(commands.Cog):
         assert guild is not None
         member = interaction.user
 
-        if REQUIRE_PARTICIPANT_ROLE:
-            if not isinstance(member, discord.Member) or not any(r.id == PARTICIPANT_ROLE_ID for r in member.roles):
-                embed = self.bot.embed_renderer.render("clan_war_no_role", {})
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-                return
+        clans = await self.bot.db.get_clans(guild.id)
+        clan = find_member_clan(member, clans) if isinstance(member, discord.Member) else None
+
+        if clan is None:
+            embed = self.bot.embed_renderer.render("clan_war_no_role", {})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
 
         await interaction.response.defer(ephemeral=True)
 
-        data = await self.bot.db.get_clan_war_leaderboard(guild.id, DEFAULT_RATES, CONVERT_PER)
+        data = await self.bot.db.get_clan_war_leaderboard(clan["clan_id"], DEFAULT_RATES, CONVERT_PER)
 
         rank = None
         entry = None
@@ -229,20 +292,26 @@ class ClanWars(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ── /setresourcepoints (admin) ───────────────────────────────────────────
-    @app_commands.command(name="setresourcepoints", description="[Admin] Change the points-per-unit rate for a resource.")
-    @app_commands.describe(resource="Which resource to update.", points="New points-per-unit value.")
+    @app_commands.command(name="setresourcepoints", description="[Admin] Change the points-per-unit rate for a resource, for one clan.")
+    @app_commands.describe(clan="Which clan's rate to change.", resource="Which resource to update.", points="New points-per-unit value.")
     @app_commands.choices(resource=[
         app_commands.Choice(name=meta["label"], value=key)
         for key, meta in RESOURCES.items() if meta["has_points"]
     ])
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.default_permissions(administrator=True)
-    async def setresourcepoints(self, interaction: discord.Interaction, resource: app_commands.Choice[str], points: float):
+    async def setresourcepoints(self, interaction: discord.Interaction, clan: int, resource: app_commands.Choice[str], points: float):
         guild = interaction.guild
         assert guild is not None
 
-        await self.bot.db.set_resource_rate(guild.id, resource.value, points)
-        await self.refresh_panel(guild.id)
+        clan_row = await self.bot.db.get_clan(clan)
+        if not clan_row or clan_row["guild_id"] != guild.id:
+            embed = self.bot.embed_renderer.render("clan_not_found", {})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await self.bot.db.set_resource_rate(clan, resource.value, points)
+        await self.refresh_panel(clan)
 
         embed = self.bot.embed_renderer.render("clan_war_rate_updated", {
             "resource": RESOURCES[resource.value]["label"],
@@ -251,16 +320,23 @@ class ClanWars(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ── /resetwar (admin) ─────────────────────────────────────────────────────
-    @app_commands.command(name="resetwar", description="[Admin] Clear all submitted resources for a new clan war cycle.")
+    @app_commands.command(name="resetwar", description="[Admin] Clear all submitted resources for one clan's new war cycle.")
+    @app_commands.describe(clan="Which clan to reset.")
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.default_permissions(administrator=True)
-    async def resetwar(self, interaction: discord.Interaction):
+    async def resetwar(self, interaction: discord.Interaction, clan: int):
         guild = interaction.guild
         assert guild is not None
 
-        await self.bot.db.reset_clan_war(guild.id)
-        self.current_page[guild.id] = 0
-        await self.refresh_panel(guild.id)
+        clan_row = await self.bot.db.get_clan(clan)
+        if not clan_row or clan_row["guild_id"] != guild.id:
+            embed = self.bot.embed_renderer.render("clan_not_found", {})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await self.bot.db.reset_clan_war(clan)
+        self.current_page[clan] = 0
+        await self.refresh_panel(clan)
 
         embed = self.bot.embed_renderer.render("clan_war_reset", {})
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -274,9 +350,14 @@ class ClanWars(commands.Cog):
             log.error(f"Clan Wars command error: {error}")
             raise error
 
+    register.error(_admin_error)
     resourcepanel_setup.error(_admin_error)
     setresourcepoints.error(_admin_error)
     resetwar.error(_admin_error)
+
+    resourcepanel_setup.autocomplete("clan")(_clan_autocomplete)
+    setresourcepoints.autocomplete("clan")(_clan_autocomplete)
+    resetwar.autocomplete("clan")(_clan_autocomplete)
 
 
 async def setup(bot: 'RuniClient'):
