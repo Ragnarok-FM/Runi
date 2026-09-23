@@ -8,6 +8,13 @@ EMBEDS = {
         "footer": "Runi • Clan Wars | Page {page} of {total_pages} • Auto-updates every {refresh_minutes}m • ⚠️ = Stale (7+ days) • {timestamp_label}"
     },
 
+    "clan_war_report": {
+        "title": "📋 {clan_name} — Final Report",
+        "description": "{content}",
+        "color": "gold",
+        "footer": "Runi • Clan Wars | Page {page} of {total_pages} — Cycle ended, resources have been reset"
+    },
+
     "clan_war_no_role": {
         "title": "❌ Not Eligible",
         "description": "You're not part of any registered clan on this server, so you can't submit resources. Ask an admin to check your roles.",
@@ -80,15 +87,15 @@ EMBEDS = {
 
     "clan_registered": {
         "title": "✅ Clan Registered",
-        "description": "**{name}** is now registered, tied to {role}.\nMembers with that role can now submit resources, and you can run `/resourcepanel setup` to post their panel.",
+        "description": "**{name}** is now registered, tied to {role}.\nForum channel: {forum}\nMembers with that role can now submit resources, and you can run `/resourcepanel setup` to post their panel.",
         "color": "green",
         "footer": "Runi • Clan Wars"
     },
 
-    "clan_role_already_registered": {
-        "title": "❌ Role Already In Use",
-        "description": "{role} is already tied to another registered clan. Each role can only identify one clan.",
-        "color": "red",
+    "clan_updated": {
+        "title": "✅ Clan Updated",
+        "description": "**{name}** has been updated — role: {role}.\nForum channel: {forum}",
+        "color": "green",
         "footer": "Runi • Clan Wars"
     },
 

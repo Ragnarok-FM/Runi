@@ -120,3 +120,19 @@ def find_member_clan(member, clans: list[dict]) -> dict | None:
         if clan:
             return clan
     return None
+
+
+# ── Weekly war-cycle scheduling ─────────────────────────────────────────────
+# New war starts Tuesday, ends Sunday; Monday is an off day. Each in-game
+# "day" resets at 02:00 local time, so Sunday (the final war day) actually
+# ends at 02:00 Monday — the cycle turnover (report the old cycle, reset,
+# open a new forum thread) happens a minute AFTER that, at 02:01 Monday,
+# giving members a little buffer to submit right up to the reset. Uses
+# zoneinfo (not a fixed UTC offset) specifically so this stays correct
+# this stays correct across CET/CEST daylight-saving transitions.
+from datetime import time as _time
+from zoneinfo import ZoneInfo
+
+WAR_RESET_TIMEZONE = ZoneInfo("Europe/Stockholm")
+WAR_RESET_WEEKDAY = 0  # Monday=0, Tuesday=1 (per datetime.weekday())
+WAR_RESET_TIME = _time(hour=2, minute=1, tzinfo=WAR_RESET_TIMEZONE)

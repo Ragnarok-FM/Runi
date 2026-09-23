@@ -68,15 +68,23 @@ class Database:
             """)
 
             # Clan Wars: registered clans within a guild (name + the Discord role
-            # that identifies membership in that clan)
+            # that identifies membership in that clan, plus an optional forum
+            # channel where a new thread is created each weekly war cycle)
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS clan_war_clans (
-                    clan_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id    INTEGER NOT NULL,
-                    name        TEXT    NOT NULL,
-                    role_id     INTEGER NOT NULL UNIQUE
+                    clan_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id          INTEGER NOT NULL,
+                    name              TEXT    NOT NULL,
+                    role_id           INTEGER NOT NULL UNIQUE,
+                    forum_channel_id  INTEGER
                 )
             """)
+            # Migration: add forum_channel_id to an already-existing clan_war_clans
+            # table from before this column existed.
+            try:
+                await db.execute("ALTER TABLE clan_war_clans ADD COLUMN forum_channel_id INTEGER")
+            except aiosqlite.OperationalError:
+                pass  # column already exists
 
             # Clan Wars: per-member raw resource submissions (overwritten each submit)
             await db.execute("""
@@ -765,44 +773,58 @@ class Database:
 
     # ── Clan Wars: Clan Registry ─────────────────────────────────────────────
 
-    async def register_clan(self, guild_id: int, name: str, role_id: int) -> int | None:
+    async def register_clan(self, guild_id: int, name: str, role_id: int, forum_channel_id: int | None = None) -> tuple[int, bool]:
         """
-        Registers a new clan for a guild, tied to a Discord role. Returns the
-        new clan_id, or None if that role is already registered to a clan
-        (role_id is UNIQUE — one role can only ever identify one clan).
+        Registers a new clan, or updates an existing one if role_id is
+        already registered — re-running /register with the same role
+        updates the name and, if given, the forum channel (an already-set
+        forum channel is left alone if forum_channel_id is None this time).
+        Returns (clan_id, was_newly_created).
         """
-        async with aiosqlite.connect(self.path) as db:
-            try:
-                cur = await db.execute(
-                    "INSERT INTO clan_war_clans (guild_id, name, role_id) VALUES (?, ?, ?)",
-                    (guild_id, name, role_id),
-                )
-            except aiosqlite.IntegrityError:
-                return None
-            await db.commit()
-            return cur.lastrowid
-
-    async def get_clan(self, clan_id: int) -> dict | None:
-        """Returns {"clan_id", "guild_id", "name", "role_id"} for one clan, or None."""
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT clan_id, guild_id, name, role_id FROM clan_war_clans WHERE clan_id = ?",
+                "SELECT clan_id FROM clan_war_clans WHERE role_id = ?", (role_id,)
+            ) as cur:
+                existing = await cur.fetchone()
+            was_new = existing is None
+
+            await db.execute(
+                """INSERT INTO clan_war_clans (guild_id, name, role_id, forum_channel_id)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT (role_id) DO UPDATE SET
+                       name = excluded.name,
+                       forum_channel_id = COALESCE(excluded.forum_channel_id, clan_war_clans.forum_channel_id)""",
+                (guild_id, name, role_id, forum_channel_id),
+            )
+            await db.commit()
+
+            async with db.execute(
+                "SELECT clan_id FROM clan_war_clans WHERE role_id = ?", (role_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                return row[0], was_new
+
+    async def get_clan(self, clan_id: int) -> dict | None:
+        """Returns {"clan_id", "guild_id", "name", "role_id", "forum_channel_id"} for one clan, or None."""
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT clan_id, guild_id, name, role_id, forum_channel_id FROM clan_war_clans WHERE clan_id = ?",
                 (clan_id,),
             ) as cur:
                 row = await cur.fetchone()
                 if not row:
                     return None
-                return {"clan_id": row[0], "guild_id": row[1], "name": row[2], "role_id": row[3]}
+                return {"clan_id": row[0], "guild_id": row[1], "name": row[2], "role_id": row[3], "forum_channel_id": row[4]}
 
     async def get_clans(self, guild_id: int) -> list[dict]:
-        """Returns every registered clan for a guild as [{"clan_id", "name", "role_id"}, ...]."""
+        """Returns every registered clan for a guild as [{"clan_id", "name", "role_id", "forum_channel_id"}, ...]."""
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT clan_id, name, role_id FROM clan_war_clans WHERE guild_id = ?",
+                "SELECT clan_id, name, role_id, forum_channel_id FROM clan_war_clans WHERE guild_id = ?",
                 (guild_id,),
             ) as cur:
                 rows = await cur.fetchall()
-        return [{"clan_id": r[0], "name": r[1], "role_id": r[2]} for r in rows]
+        return [{"clan_id": r[0], "name": r[1], "role_id": r[2], "forum_channel_id": r[3]} for r in rows]
 
     # ── Clan Wars: Resource Tracking ──────────────────────────────────────────
 
