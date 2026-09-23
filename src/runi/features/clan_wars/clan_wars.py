@@ -299,6 +299,14 @@ class ClanWars(commands.Cog):
                     await old_thread.send(embed=embed)
             except discord.HTTPException as exc:
                 log.error(f"Weekly reset: failed to post report for clan '{clan['name']}': {exc}")
+
+            try:
+                old_message = await old_thread.fetch_message(old_panel["message_id"])
+                await old_message.delete()
+            except discord.NotFound:
+                pass  # panel message was already gone somehow — nothing to clean up
+            except discord.HTTPException as exc:
+                log.error(f"Weekly reset: failed to delete old panel for clan '{clan['name']}': {exc}")
         else:
             log.warn(f"Weekly reset: no existing thread found for clan '{clan['name']}' — skipping report, proceeding to reset")
 
