@@ -74,7 +74,7 @@ def _parse_bet(value: str, balance: int) -> int:
 WORK_SUCCESS_LINES = [
     "You swung the hammer until your arms gave out and earned {earned:,} :Runes:.",
     "You hammered away at the forge and pocketed {earned:,} :Runes: for your trouble.",
-    "Sweat, soot, and a solid day's work — you earned {earned:,} :Runes:.",
+    "Sweat, soot, and a solid hour's work — you earned {earned:,} :Runes:.",
     "You picked up some odd jobs around the forge and walked away with {earned:,} :Runes:.",
     "The Forge Master nodded approvingly and slipped you {earned:,} :Runes:.",
     "You mined, you toiled, you triumphed — {earned:,} :Runes: richer.",
@@ -92,7 +92,7 @@ WORK_COOLDOWN_LINES = [
     "Even a legendary blacksmith needs rest. Try again in {wait}.",
     "You're on cooldown, not on strike. Back in {wait}.",
     "The anvil's ready, but you aren't. Come back in {wait}.",
-    "One shift a day keeps the burnout away. Come back in {wait}.",
+    "One shift an hour keeps the burnout away. Come back in {wait}.",
     "You're forged out for now. Try again in {wait}.",
 ]
 
