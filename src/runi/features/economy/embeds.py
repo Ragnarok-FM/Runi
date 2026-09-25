@@ -1,7 +1,7 @@
 EMBEDS = {
     "work_success": {
         "title": "⚒️ Work Complete",
-        "description": "You worked hard and earned {earned:,} :Runes:",
+        "description": "{flavor}",
         "fields": [
             ("Balance", "{balance:,} :Runes:", True)
         ],
@@ -11,10 +11,7 @@ EMBEDS = {
 
     "work_cooldown": {
         "title": "⏳ Still Tired",
-        "description": (
-            "You need to rest before working again.\n"
-            "Come back in {wait}."
-        ),
+        "description": "{flavor}",
         "color": "red",
         "footer": "Runi • Economy",
     },

@@ -1,4 +1,5 @@
 import asyncio
+import random
 from typing import Optional, TYPE_CHECKING
 
 import discord
@@ -65,6 +66,36 @@ def _parse_bet(value: str, balance: int) -> int:
     return amount
 
 
+# ── /work flavour text ────────────────────────────────────────────────────────
+# One of these is picked at random each time /work succeeds or hits its cooldown,
+# so the response doesn't feel identical every hour. {earned} / {wait} are filled
+# in before the embed is rendered.
+
+WORK_SUCCESS_LINES = [
+    "You swung the hammer until your arms gave out and earned {earned:,} :Runes:.",
+    "You hammered away at the forge and pocketed {earned:,} :Runes: for your trouble.",
+    "Sweat, soot, and a solid day's work — you earned {earned:,} :Runes:.",
+    "You picked up some odd jobs around the forge and walked away with {earned:,} :Runes:.",
+    "The Forge Master nodded approvingly and slipped you {earned:,} :Runes:.",
+    "You mined, you toiled, you triumphed — {earned:,} :Runes: richer.",
+    "You forged ahead (pun intended) and earned {earned:,} :Runes:.",
+    "Blood, sweat, and Runes — mostly Runes. You earned {earned:,} :Runes:.",
+    "You hustled hard and came back with {earned:,} :Runes: to show for it.",
+    "Somebody had to man the anvil. You earned {earned:,} :Runes: for your troubles.",
+    "You stoked the forge fires all shift and earned {earned:,} :Runes:.",
+    "Honest work, mostly. You earned {earned:,} :Runes:.",
+]
+
+WORK_COOLDOWN_LINES = [
+    "Your arms are still sore from last shift. Come back in {wait}.",
+    "The forge is still hot from your last go — give it {wait}.",
+    "Even a legendary blacksmith needs rest. Try again in {wait}.",
+    "You're on cooldown, not on strike. Back in {wait}.",
+    "The anvil's ready, but you aren't. Come back in {wait}.",
+    "One shift a day keeps the burnout away. Come back in {wait}.",
+    "You're forged out for now. Try again in {wait}.",
+]
+
 BET_SUGGESTIONS = [
     ("All-in", "allin"),
     ("Half", "half"),
@@ -99,14 +130,17 @@ class Economy(commands.Cog):
 
         if not result["success"]:
             wait = _fmt_time(result["wait_seconds"])
-            embed = self.bot.embed_renderer.render("work_cooldown", {"wait": wait})
+            flavor = random.choice(WORK_COOLDOWN_LINES).format(wait=wait)
+            embed = self.bot.embed_renderer.render("work_cooldown", {"wait": wait, "flavor": flavor})
             await ctx.send(embed=embed, ephemeral=True, delete_after=5)
             return
 
+        flavor = random.choice(WORK_SUCCESS_LINES).format(earned=result["earned"])
         embed = self.bot.embed_renderer.render("work_success", {
             "earned": result["earned"],
             "balance": result["balance"],
             "cooldown": _fmt_time(WORK_COOLDOWN_SECONDS),
+            "flavor": flavor,
         })
         await ctx.send(embed=embed)
 
