@@ -104,5 +104,33 @@ EMBEDS = {
         "description": "That clan doesn't exist on this server. Use `/register` to add it first.",
         "color": "red",
         "footer": "Runi • Clan Wars"
+    },
+
+    "clan_no_forum_configured": {
+        "title": "❌ No Forum Configured",
+        "description": "**{name}** doesn't have a Forum channel set yet. Run `/register` again for this clan and set the `forum` option.",
+        "color": "red",
+        "footer": "Runi • Clan Wars"
+    },
+
+    "clan_new_thread_created": {
+        "title": "✅ New Thread Created",
+        "description": "A fresh forum thread and panel have been posted for **{name}**. Current resource data was left untouched.",
+        "color": "green",
+        "footer": "Runi • Clan Wars"
+    },
+
+    "clan_new_thread_failed": {
+        "title": "❌ Failed to Create Thread",
+        "description": "Something went wrong creating the new thread for **{name}** — check the bot's console log for details (likely a missing permission, such as Manage Threads, in the Forum channel).",
+        "color": "red",
+        "footer": "Runi • Clan Wars"
+    },
+
+    "clan_weekly_reset_ran": {
+        "title": "✅ Weekly Cycle Run Manually",
+        "description": "The full weekly cycle has been run for **{name}**: report posted, resources reset, old thread locked, and a new thread opened.",
+        "color": "green",
+        "footer": "Runi • Clan Wars"
     }
 }

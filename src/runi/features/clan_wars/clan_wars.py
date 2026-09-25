@@ -81,7 +81,7 @@ class ClanWars(commands.Cog):
             else:
                 parts.append(f"{name_part} `{amount:,}`")
 
-        return f"{header}\n└ {' | '.join(parts)}"
+        return f"{header}\n└ {' ┃ '.join(parts)}"
 
     def _format_totals(self, data: dict) -> str:
         lines = ["📊 **Clan Totals**", f"🏆 **Total Points:** `{data['total_points']:,.0f}` pts", ""]
@@ -323,15 +323,27 @@ class ClanWars(commands.Cog):
 
         # 4. Create a new forum thread for the new cycle, locked from the
         #    start — members only ever need to click buttons, never post.
+        await self._create_new_war_thread(guild, clan)
+
+    async def _create_new_war_thread(self, guild: discord.Guild, clan: dict) -> bool:
+        """
+        Creates a fresh forum thread for a clan's war cycle, posts a locked
+        panel into it, and points clan_war_panels at it. Shared by both the
+        automated weekly job and the manual /newpanelthread fallback command
+        — one code path, so they can never drift apart. Returns True on
+        success, False if anything failed (already logged either way).
+        """
+        clan_id = clan["clan_id"]
+
         try:
             forum_channel = await guild.fetch_channel(clan["forum_channel_id"])
         except discord.HTTPException as exc:
-            log.error(f"Weekly reset: couldn't fetch forum channel for clan '{clan['name']}': {exc}")
-            return
+            log.error(f"Couldn't fetch forum channel for clan '{clan['name']}': {exc}")
+            return False
 
         if not isinstance(forum_channel, discord.ForumChannel):
-            log.error(f"Weekly reset: configured channel for clan '{clan['name']}' is not a Forum channel — cannot create new thread")
-            return
+            log.error(f"Configured channel for clan '{clan['name']}' is not a Forum channel — cannot create new thread")
+            return False
 
         now = datetime.now(WAR_RESET_TIMEZONE)
         thread_name = f"{now:%B} {_ordinal_day(now.day)}, {now:%Y}"
@@ -348,8 +360,8 @@ class ClanWars(commands.Cog):
         try:
             result = await forum_channel.create_thread(name=thread_name, embed=placeholder_embed, view=PanelView(self.bot))
         except discord.HTTPException as exc:
-            log.error(f"Weekly reset: failed to create new thread for clan '{clan['name']}': {exc}")
-            return
+            log.error(f"Failed to create new thread for clan '{clan['name']}': {exc}")
+            return False
 
         new_thread = result.thread
         new_message = result.message
@@ -357,10 +369,11 @@ class ClanWars(commands.Cog):
         try:
             await new_thread.edit(locked=True)
         except discord.HTTPException as exc:
-            log.error(f"Weekly reset: failed to lock new thread for clan '{clan['name']}': {exc}")
+            log.error(f"Failed to lock new thread for clan '{clan['name']}': {exc}")
 
         await self.bot.db.set_clan_war_panel(clan_id, new_thread.id, new_message.id)
         await self.refresh_panel(clan_id)
+        return True
 
     # ── Shared clan-selector autocomplete (used by 3 admin commands below) ────
     async def _clan_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
@@ -520,6 +533,61 @@ class ClanWars(commands.Cog):
         embed = self.bot.embed_renderer.render("clan_war_reset", {})
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    # ── /newpanelthread (admin, fallback) ────────────────────────────────────
+    @app_commands.command(name="newpanelthread", description="[Admin] Fallback: new forum thread + fresh panel for a clan. Doesn't touch resource data.")
+    @app_commands.describe(clan="Which clan to create a new thread for.")
+    @app_commands.default_permissions(administrator=True)
+    async def newpanelthread(self, interaction: discord.Interaction, clan: int):
+        guild = interaction.guild
+        assert guild is not None
+
+        clan_row = await self.bot.db.get_clan(clan)
+        if not clan_row or clan_row["guild_id"] != guild.id:
+            embed = self.bot.embed_renderer.render("clan_not_found", {})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        if not clan_row["forum_channel_id"]:
+            embed = self.bot.embed_renderer.render("clan_no_forum_configured", {"name": clan_row["name"]})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        success = await self._create_new_war_thread(guild, clan_row)
+
+        embed = self.bot.embed_renderer.render(
+            "clan_new_thread_created" if success else "clan_new_thread_failed",
+            {"name": clan_row["name"]},
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ── /runweeklyreset (admin, fallback) ────────────────────────────────────
+    @app_commands.command(name="runweeklyreset", description="[Admin] Fallback: manually run the full weekly cycle for a clan, right now.")
+    @app_commands.describe(clan="Which clan to run the weekly cycle for.")
+    @app_commands.default_permissions(administrator=True)
+    async def runweeklyreset(self, interaction: discord.Interaction, clan: int):
+        guild = interaction.guild
+        assert guild is not None
+
+        clan_row = await self.bot.db.get_clan(clan)
+        if not clan_row or clan_row["guild_id"] != guild.id:
+            embed = self.bot.embed_renderer.render("clan_not_found", {})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        if not clan_row["forum_channel_id"]:
+            embed = self.bot.embed_renderer.render("clan_no_forum_configured", {"name": clan_row["name"]})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        await self._run_weekly_reset_for_clan(guild, clan_row)
+
+        embed = self.bot.embed_renderer.render("clan_weekly_reset_ran", {"name": clan_row["name"]})
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     # ── Error handling for admin-managed slash commands ──────────────────────
     # Permission enforcement is now fully delegated to Discord's own native
     # per-command role permissions (Server Settings → Integrations → Runi),
@@ -533,10 +601,14 @@ class ClanWars(commands.Cog):
     resourcepanel_setup.error(_command_error)
     setresourcepoints.error(_command_error)
     resetwar.error(_command_error)
+    newpanelthread.error(_command_error)
+    runweeklyreset.error(_command_error)
 
     resourcepanel_setup.autocomplete("clan")(_clan_autocomplete)
     setresourcepoints.autocomplete("clan")(_clan_autocomplete)
     resetwar.autocomplete("clan")(_clan_autocomplete)
+    newpanelthread.autocomplete("clan")(_clan_autocomplete)
+    runweeklyreset.autocomplete("clan")(_clan_autocomplete)
 
 
 async def setup(bot: 'RuniClient'):
