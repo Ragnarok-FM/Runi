@@ -38,6 +38,8 @@ class RuniClient(commands.Bot):
         self.db = Database(str(BOT_DATA_DB_PATH))
 
     async def setup_hook(self):
+        await self.db.init()
+
         features_root = Path(features.__path__[0])
 
         for feature_dir in features_root.iterdir():
@@ -79,7 +81,6 @@ class RuniClient(commands.Bot):
                 log.error(f"Failed to sync commands: {e}")
 
     async def on_ready(self):
-        await self.db.init()
         log.info(f"Logged on as {self.user}!")
 
     async def on_guild_join(self, guild):
