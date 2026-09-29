@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 import discord
 from discord import ui
 
-from .resources import RESOURCES, find_member_clan
+from .resources import RESOURCES
+from .clans import find_member_clan
 
 if TYPE_CHECKING:
     from runi.main import RuniClient

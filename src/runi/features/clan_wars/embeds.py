@@ -120,17 +120,47 @@ EMBEDS = {
         "footer": "Runi • Clan Wars"
     },
 
+    "clan_new_thread_partial": {
+        "title": "⚠️ New Thread Created, With Problems",
+        "description": "A fresh forum thread and panel were posted for **{name}** (resource data untouched), but not everything went through:",
+        "fields": [
+            ("Needs attention", "{warnings}", False),
+        ],
+        "color": "orange",
+        "footer": "Runi • Clan Wars"
+    },
+
     "clan_new_thread_failed": {
         "title": "❌ Failed to Create Thread",
-        "description": "Something went wrong creating the new thread for **{name}** — check the bot's console log for details (likely a missing permission, such as Manage Threads, in the Forum channel).",
+        "description": "Couldn't create the new thread for **{name}**.\n\n{error}",
         "color": "red",
         "footer": "Runi • Clan Wars"
     },
 
     "clan_weekly_reset_ran": {
         "title": "✅ Weekly Cycle Run Manually",
-        "description": "The full weekly cycle has been run for **{name}**: report posted, resources reset, old thread locked, and a new thread opened.",
+        "description": "The full weekly cycle has been run for **{name}**: report posted, resources reset, new thread opened, and the old panel removed and its thread locked.",
         "color": "green",
+        "footer": "Runi • Clan Wars"
+    },
+
+    "clan_weekly_reset_partial": {
+        "title": "⚠️ Weekly Cycle Ran, With Problems",
+        "description": "The new cycle for **{name}** is running (resources reset, new thread and panel live), but not everything went through:",
+        "fields": [
+            ("Needs attention", "{warnings}", False),
+        ],
+        "color": "orange",
+        "footer": "Runi • Clan Wars"
+    },
+
+    "clan_weekly_reset_failed": {
+        "title": "❌ Weekly Cycle Stopped",
+        "description": "The weekly cycle for **{name}** didn't complete.\n\n{error}",
+        "fields": [
+            ("Other notes", "{warnings}", False),
+        ],
+        "color": "red",
         "footer": "Runi • Clan Wars"
     }
 }
