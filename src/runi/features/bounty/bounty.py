@@ -152,11 +152,18 @@ class Bounty(commands.Cog):
                 else f"**{target.display_name}** hasn't started today's bounties yet."
             )
             embed = self.bot.embed_renderer.render("bounty_not_started", {"description": text})
-            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            if ctx.interaction is not None:
+                # Ephemeral: stays until the user dismisses it
+                await ctx.send(embed=embed, ephemeral=True)
+            else:
+                # !prefix commands can't be ephemeral, so don't leave it in the channel
+                await ctx.send(embed=embed, delete_after=5)
             return
 
+        # Ephemeral for /bounty status (only the requester sees it). !prefix
+        # commands can't be ephemeral, so those still post in the channel.
         description = self._done_line(bounty_set) + self._already_done_line(bounty_set, completed, bonus_paid)
-        await ctx.send(embed=self._board_embed("bounty_board", target, bounty_set, description, now))
+        await ctx.send(embed=self._board_embed("bounty_board", target, bounty_set, description, now), ephemeral=True)
 
     # ── /bounty info ───────────────────────────────────────────────────────────
     @bounty.command(name="info", description="Learn how bounties work.")
