@@ -67,6 +67,64 @@ class Database:
                 )
             """)
 
+            # Clan Wars: registered clans within a guild (name + the Discord role
+            # that identifies membership in that clan, plus an optional forum
+            # channel where a new thread is created each weekly war cycle)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS clan_war_clans (
+                    clan_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id          INTEGER NOT NULL,
+                    name              TEXT    NOT NULL,
+                    role_id           INTEGER NOT NULL UNIQUE,
+                    forum_channel_id  INTEGER
+                )
+            """)
+            # Migration: add forum_channel_id to an already-existing clan_war_clans
+            # table from before this column existed.
+            try:
+                await db.execute("ALTER TABLE clan_war_clans ADD COLUMN forum_channel_id INTEGER")
+            except aiosqlite.OperationalError:
+                pass  # column already exists
+
+            # Clan Wars: per-member raw resource submissions (overwritten each submit)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS clan_war_resources (
+                    guild_id    INTEGER NOT NULL,
+                    user_id     INTEGER NOT NULL,
+                    resource    TEXT    NOT NULL,
+                    amount      INTEGER NOT NULL DEFAULT 0,
+                    updated_at  REAL    NOT NULL DEFAULT 0,
+                    PRIMARY KEY (guild_id, user_id, resource)
+                )
+            """)
+            # Migration: add clan_id to an already-existing clan_war_resources
+            # table from before multi-clan support existed. Safe to run every
+            # startup — the duplicate-column error is caught and ignored.
+            try:
+                await db.execute("ALTER TABLE clan_war_resources ADD COLUMN clan_id INTEGER")
+            except Exception:
+                pass
+
+            # Clan Wars: admin-adjustable points-per-unit rate for each resource,
+            # scoped per clan (each clan researches its own tech independently)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS clan_rates (
+                    clan_id     INTEGER NOT NULL,
+                    resource    TEXT    NOT NULL,
+                    points      REAL    NOT NULL DEFAULT 0,
+                    PRIMARY KEY (clan_id, resource)
+                )
+            """)
+            # Clan Wars: location of each clan's own live panel message + cycle start
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS clan_panels (
+                    clan_id           INTEGER PRIMARY KEY,
+                    channel_id        INTEGER NOT NULL,
+                    message_id        INTEGER NOT NULL,
+                    cycle_started_at  REAL    NOT NULL DEFAULT 0
+                )
+            """)
+
             # Create indexes to optimize queries
             # Users table
             await db.execute("CREATE INDEX IF NOT EXISTS idx_users_guild_level_xp ON users(guild_id, level DESC, xp DESC)")
@@ -83,6 +141,10 @@ class Database:
             # Gambling records table
             await db.execute("CREATE INDEX IF NOT EXISTS idx_gambling_guild_won ON gambling_records(guild_id, won)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_gambling_guild_won_game ON gambling_records(guild_id, won, game)")
+
+            # Clan war tables
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_clan_war_resources_clan ON clan_war_resources(clan_id)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_clan_war_clans_guild ON clan_war_clans(guild_id)")
 
             await db.commit()
 
@@ -708,3 +770,225 @@ class Database:
             )
             await db.commit()
             return cur.rowcount > 0
+
+    # ── Clan Wars: Clan Registry ─────────────────────────────────────────────
+
+    async def register_clan(self, guild_id: int, name: str, role_id: int, forum_channel_id: int | None = None) -> tuple[int, bool]:
+        """
+        Registers a new clan, or updates an existing one if role_id is
+        already registered — re-running /register with the same role
+        updates the name and, if given, the forum channel (an already-set
+        forum channel is left alone if forum_channel_id is None this time).
+        Returns (clan_id, was_newly_created).
+        """
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT clan_id FROM clan_war_clans WHERE role_id = ?", (role_id,)
+            ) as cur:
+                existing = await cur.fetchone()
+            was_new = existing is None
+
+            await db.execute(
+                """INSERT INTO clan_war_clans (guild_id, name, role_id, forum_channel_id)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT (role_id) DO UPDATE SET
+                       name = excluded.name,
+                       forum_channel_id = COALESCE(excluded.forum_channel_id, clan_war_clans.forum_channel_id)""",
+                (guild_id, name, role_id, forum_channel_id),
+            )
+            await db.commit()
+
+            async with db.execute(
+                "SELECT clan_id FROM clan_war_clans WHERE role_id = ?", (role_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                return row[0], was_new
+
+    async def get_clan(self, clan_id: int) -> dict | None:
+        """Returns {"clan_id", "guild_id", "name", "role_id", "forum_channel_id"} for one clan, or None."""
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT clan_id, guild_id, name, role_id, forum_channel_id FROM clan_war_clans WHERE clan_id = ?",
+                (clan_id,),
+            ) as cur:
+                row = await cur.fetchone()
+                if not row:
+                    return None
+                return {"clan_id": row[0], "guild_id": row[1], "name": row[2], "role_id": row[3], "forum_channel_id": row[4]}
+
+    async def get_clans(self, guild_id: int) -> list[dict]:
+        """Returns every registered clan for a guild as [{"clan_id", "name", "role_id", "forum_channel_id"}, ...]."""
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT clan_id, name, role_id, forum_channel_id FROM clan_war_clans WHERE guild_id = ?",
+                (guild_id,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [{"clan_id": r[0], "name": r[1], "role_id": r[2], "forum_channel_id": r[3]} for r in rows]
+
+    # ── Clan Wars: Resource Tracking ──────────────────────────────────────────
+
+    async def get_resource_rates(self, clan_id: int, defaults: dict[str, float]) -> dict[str, float]:
+        """
+        Returns {resource: points_per_unit} for a clan. Any resource missing
+        a row falls back to the value in `defaults` (not persisted until changed).
+        """
+        rates = dict(defaults)
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT resource, points FROM clan_rates WHERE clan_id = ?",
+                (clan_id,),
+            ) as cur:
+                async for resource, points in cur:
+                    rates[resource] = points
+        return rates
+
+    async def set_resource_rate(self, clan_id: int, resource: str, points: float) -> None:
+        """Set (or update) the points-per-unit rate for a resource, scoped to one clan."""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """INSERT INTO clan_rates (clan_id, resource, points)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT (clan_id, resource) DO UPDATE SET points = excluded.points""",
+                (clan_id, resource, points),
+            )
+            await db.commit()
+
+    async def submit_clan_war_resource(self, guild_id: int, user_id: int, resource: str, amount: int, clan_id: int) -> None:
+        """
+        Overwrites a member's submitted amount for one resource, tagging it
+        with their current clan_id (re-derived by the caller from their roles
+        at submission time, so a role change takes effect on their next submit).
+        """
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """INSERT INTO clan_war_resources (guild_id, user_id, resource, amount, updated_at, clan_id)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT (guild_id, user_id, resource)
+                   DO UPDATE SET amount = excluded.amount, updated_at = excluded.updated_at, clan_id = excluded.clan_id""",
+                (guild_id, user_id, resource, amount, time.time(), clan_id),
+            )
+            await db.commit()
+
+    async def get_clan_war_leaderboard(self, clan_id: int, defaults: dict[str, float], convert_per: dict[str, int]) -> dict:
+        """
+        Builds the full panel dataset for one clan.
+
+        `convert_per` maps resource -> how many raw units make up 1
+        point-earning unit (e.g. 50 Clockwinders = 1 Mount Summon). Use 1
+        for resources with no conversion (points = amount * rate directly).
+
+        Returns {
+            "members": [
+                {
+                    "user_id": int,
+                    "resources": {resource: amount, ...},
+                    "converted": {resource: converted_unit_count, ...},
+                    "points": float,
+                    "updated_at": float,   # most recent submission across all resources
+                },
+                ...
+            ],  # sorted by points DESC
+            "totals": {resource: amount, ...},
+            "totals_converted": {resource: converted_unit_count, ...},
+            "total_points": float,   # exact sum of every member's points, never recalculated separately
+            "rates": {resource: points_per_unit, ...},
+        }
+        """
+        rates = await self.get_resource_rates(clan_id, defaults)
+
+        members: dict[int, dict] = {}
+        totals: dict[str, int] = {r: 0 for r in defaults}
+
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT user_id, resource, amount, updated_at FROM clan_war_resources WHERE clan_id = ?",
+                (clan_id,),
+            ) as cur:
+                rows = await cur.fetchall()
+
+        for user_id, resource, amount, updated_at in rows:
+            entry = members.setdefault(user_id, {
+                "user_id": user_id,
+                "resources": {r: 0 for r in defaults},
+                "updated_at": 0.0,
+            })
+            entry["resources"][resource] = amount
+            entry["updated_at"] = max(entry["updated_at"], updated_at)
+            if resource in totals:
+                totals[resource] += amount
+
+        for entry in members.values():
+            entry["converted"] = {
+                r: entry["resources"].get(r, 0) // convert_per.get(r, 1) for r in defaults
+            }
+            entry["points"] = sum(
+                entry["converted"][r] * rates.get(r, 0) for r in defaults
+            )
+
+        # Total points is always the exact sum of member points, never
+        # recalculated independently from `totals` — this guarantees the
+        # Clan Totals section can never disagree with the member rows.
+        total_points = sum(entry["points"] for entry in members.values())
+
+        totals_converted = {
+            r: totals.get(r, 0) // convert_per.get(r, 1) for r in defaults
+        }
+
+        member_list = sorted(members.values(), key=lambda e: e["points"], reverse=True)
+
+        return {
+            "members": member_list,
+            "totals": totals,
+            "totals_converted": totals_converted,
+            "total_points": total_points,
+            "rates": rates,
+        }
+
+    async def reset_clan_war(self, clan_id: int) -> None:
+        """Wipes all submitted resources for one clan, starting a fresh cycle."""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("DELETE FROM clan_war_resources WHERE clan_id = ?", (clan_id,))
+            await db.execute(
+                """INSERT INTO clan_panels (clan_id, channel_id, message_id, cycle_started_at)
+                   VALUES (?, 0, 0, ?)
+                   ON CONFLICT (clan_id) DO UPDATE SET cycle_started_at = excluded.cycle_started_at""",
+                (clan_id, time.time()),
+            )
+            await db.commit()
+
+    async def get_clan_war_panel(self, clan_id: int) -> dict | None:
+        """Returns {"channel_id", "message_id", "cycle_started_at"} or None if never set up."""
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT channel_id, message_id, cycle_started_at FROM clan_panels WHERE clan_id = ?",
+                (clan_id,),
+            ) as cur:
+                row = await cur.fetchone()
+                if not row or row[1] == 0:
+                    return None
+                return {"channel_id": row[0], "message_id": row[1], "cycle_started_at": row[2]}
+
+    async def get_clan_id_by_panel_message(self, channel_id: int, message_id: int) -> int | None:
+        """Reverse lookup: given a panel message's location, which clan owns it?"""
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT clan_id FROM clan_panels WHERE channel_id = ? AND message_id = ?",
+                (channel_id, message_id),
+            ) as cur:
+                row = await cur.fetchone()
+                return row[0] if row else None
+
+    async def set_clan_war_panel(self, clan_id: int, channel_id: int, message_id: int) -> None:
+        """Records where a clan's live panel message lives, preserving cycle_started_at if already set."""
+        now = time.time()
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """INSERT INTO clan_panels (clan_id, channel_id, message_id, cycle_started_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT (clan_id) DO UPDATE SET
+                       channel_id = excluded.channel_id,
+                       message_id = excluded.message_id""",
+                (clan_id, channel_id, message_id, now),
+            )
+            await db.commit()
