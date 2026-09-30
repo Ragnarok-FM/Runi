@@ -196,10 +196,13 @@ class Leveling(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
-        if message.author.bot:
+        if message.author.bot or message.guild is None:
             return
-        
+
         result = await self.bot.db.add_xp(message.author.id, message.guild.id)
+        if result["awarded"]:
+            self.bot.dispatch("runi_xp", message, result["awarded"])
+
         if result["leveled_up"]:
             embed = self.bot.embed_renderer.render("level_up", {
                 "username": message.author.display_name,

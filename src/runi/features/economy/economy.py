@@ -144,6 +144,8 @@ class Economy(commands.Cog):
         })
         await ctx.send(embed=embed)
 
+        self.bot.dispatch("runi_work", ctx, {"earned": result["earned"]})
+
     # ── /daily ─────────────────────────────────────────────────────────────────
     @commands.guild_only()
     @commands.hybrid_command(name="daily", description="Claim your daily Runes reward.")
@@ -183,6 +185,8 @@ class Economy(commands.Cog):
         })
 
         await ctx.send(embed=embed)
+
+        self.bot.dispatch("runi_daily", ctx, {"earned": result["earned"]})
 
     # ── /balance ───────────────────────────────────────────────────────────────
     @commands.guild_only()
@@ -268,6 +272,8 @@ class Economy(commands.Cog):
             amount=bet,
             message_url=message.jump_url,
         )
+
+        self.bot.dispatch("runi_coinflip", ctx, {"bet": bet, "choice": choice.value, "won": result["won"]})
 
     # ── /slots ───────────────────────────────────────────────────────────
     @commands.guild_only()
@@ -370,6 +376,13 @@ class Economy(commands.Cog):
             message_url=message.jump_url,
         )
 
+        self.bot.dispatch("runi_slots", ctx, {
+            "bet": bet,
+            "payout": results["payout"],
+            "won": results["won"],
+            "symbols": list(results["symbols"]),
+        })
+
     # ── /richlist ──────────────────────────────────────────────────────────────
     @commands.guild_only()
     @commands.hybrid_command(name="richlist", description="See the wealthiest members on this server.")
@@ -421,7 +434,7 @@ class Economy(commands.Cog):
 
             game_line = ""
             if not game:
-                game_line = f"🎮 **{row["game"].capitalize()}**\n"
+                game_line = f"🎮 **{row['game'].capitalize()}**\n"
 
             content.append(
                 f"{place} **{name}**\n"

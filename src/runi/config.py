@@ -68,3 +68,50 @@ CLAN_WARS_MEMBERS_PER_PAGE: int = 10
 # How long the clan picker in admin commands reuses the clan list before
 # asking the database again (seconds). Autocomplete fires on every keystroke.
 CLAN_WARS_CLAN_CACHE_SECONDS: float = 30.0
+
+# ── Bounty ────────────────────────────────────────────────────────────────────
+# Bounty sets reset at 00:00 UTC, same as /daily.
+ 
+# Chance for each of the three slots to roll a given tier (must sum to 1.0)
+BOUNTY_TIER_WEIGHTS: dict[str, float] = {
+    "common": 0.65,
+    "epic": 0.28,
+    "legendary": 0.07,
+}
+ 
+# Runes paid out when a single bounty of that tier is completed
+BOUNTY_REWARDS: dict[str, int] = {
+    "common": 100,
+    "epic": 250,
+    "legendary": 600,
+}
+ 
+# Maximum number of legendary bounties in one set
+BOUNTY_MAX_LEGENDARY: int = 1
+ 
+# Completion bonus for finishing all three = this share of the set's rewards
+BOUNTY_COMPLETION_BONUS_RATE: float = 0.5
+ 
+# Minimum bet for a coinflip/slots round to count towards a bounty
+BOUNTY_MIN_BET: int = 100
+ 
+# Bounties from this many previous sets are excluded when rolling
+BOUNTY_RECENT_SETS_EXCLUDED: int = 2
+ 
+# Time-bound bounties need (min_hours + this buffer) hours left before reset
+BOUNTY_MIN_HOURS_BUFFER: float = 1.0
+ 
+# Max minutes between two /work uses for them to count as a "shift chain"
+BOUNTY_SHIFT_CHAIN_MINUTES: int = 75
+ 
+# Days old bounty sets are kept (only used to avoid repeating recent bounties)
+BOUNTY_KEEP_SETS_DAYS: int = 14
+ 
+# Number of blocks in the progress bars on /bounty start and /bounty status
+BOUNTY_PROGRESS_BAR_WIDTH: int = 10
+ 
+# Bounty completions are only shown to the member who completed them. Slash
+# commands reply ephemerally; chat bounties and !prefix commands can't, so they
+# get a DM instead when this is True. False = no message for those (the reward
+# is still paid and shows on /bounty status).
+BOUNTY_DM_NOTIFICATIONS: bool = True

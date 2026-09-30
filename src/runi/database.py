@@ -1,3 +1,5 @@
+import json
+
 import aiosqlite
 import time
 from pathlib import Path
@@ -64,6 +66,19 @@ class Database:
                     amount       INTEGER NOT NULL,
                     message_url  TEXT    NOT NULL,
                     created_at   REAL    NOT NULL
+                )
+            """)
+            # Daily bounty sets (one row per user per UTC day)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS bounty_sets (
+                    user_id     INTEGER NOT NULL,
+                    guild_id    INTEGER NOT NULL,
+                    day         TEXT    NOT NULL,
+                    rolled_at   REAL    NOT NULL,
+                    slots       TEXT    NOT NULL,
+                    bonus       INTEGER NOT NULL,
+                    bonus_paid  INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (user_id, guild_id, day)
                 )
             """)
 
@@ -176,7 +191,8 @@ class Database:
     async def add_xp(self, user_id: int, guild_id: int) -> dict:
         """
         Awards XP for a message (subject to cooldown).
-        Returns {"leveled_up": bool, "new_level": int}.
+        Returns {"leveled_up": bool, "new_level": int, "awarded": int}.
+        "awarded" is the XP given for this message (0 while on cooldown).
         """
         now = time.time()
         async with aiosqlite.connect(self.path) as db:
@@ -184,7 +200,7 @@ class Database:
 
             # Cooldown check
             if now - user["last_xp_ts"] < XP_COOLDOWN_SECONDS:
-                return {"leveled_up": False, "new_level": user["level"]}
+                return {"leveled_up": False, "new_level": user["level"], "awarded": 0}
 
             new_xp = user["xp"] + XP_PER_MESSAGE
             new_level = user["level"]
@@ -203,7 +219,7 @@ class Database:
             )
             await db.commit()
 
-        return {"leveled_up": leveled_up, "new_level": new_level}
+        return {"leveled_up": leveled_up, "new_level": new_level, "awarded": XP_PER_MESSAGE}
 
     async def get_user(self, user_id: int, guild_id: int) -> dict:
         async with aiosqlite.connect(self.path) as db:
@@ -644,6 +660,77 @@ class Database:
                 "balance": balance,
                 "change": abs(net_change),
             }
+
+    # ── Bounty ─────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _bounty_row(cur, row) -> dict:
+        data = dict(zip([d[0] for d in cur.description], row))
+        data["slots"] = json.loads(data["slots"])
+        data["bonus_paid"] = bool(data["bonus_paid"])
+        return data
+
+    async def get_bounty_set(self, user_id: int, guild_id: int, day: str) -> dict | None:
+        """Return the user's bounty set for a UTC day ("YYYY-MM-DD"), or None."""
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT * FROM bounty_sets WHERE user_id = ? AND guild_id = ? AND day = ?",
+                (user_id, guild_id, day),
+            ) as cur:
+                row = await cur.fetchone()
+                return self._bounty_row(cur, row) if row else None
+
+    async def get_recent_bounty_ids(self, user_id: int, guild_id: int, before_day: str, sets: int) -> set[str]:
+        """Bounty IDs from the user's last `sets` bounty sets before `before_day`."""
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                """SELECT slots FROM bounty_sets
+                   WHERE user_id = ? AND guild_id = ? AND day < ?
+                   ORDER BY day DESC LIMIT ?""",
+                (user_id, guild_id, before_day, sets),
+            ) as cur:
+                rows = await cur.fetchall()
+        return {slot["id"] for (slots,) in rows for slot in json.loads(slots)}
+
+    async def create_bounty_set(self, user_id: int, guild_id: int, day: str, slots: list[dict], bonus: int) -> bool:
+        """Store a freshly rolled set. Returns False if the user already has one for that day."""
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute(
+                """INSERT OR IGNORE INTO bounty_sets (user_id, guild_id, day, rolled_at, slots, bonus)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (user_id, guild_id, day, time.time(), json.dumps(slots), bonus),
+            )
+            await db.commit()
+            return cur.rowcount == 1
+
+    async def save_bounty_progress(
+        self, user_id: int, guild_id: int, day: str, slots: list[dict], bonus_paid: bool, payout: int
+    ) -> int:
+        """
+        Save progress and pay out Runes in one transaction.
+        Returns the user's new balance.
+        """
+        async with aiosqlite.connect(self.path) as db:
+            user = await self._fetch_user(db, user_id, guild_id)
+            new_balance = user["runeshards"] + payout
+
+            await db.execute(
+                """UPDATE bounty_sets SET slots = ?, bonus_paid = ?
+                   WHERE user_id = ? AND guild_id = ? AND day = ?""",
+                (json.dumps(slots), int(bonus_paid), user_id, guild_id, day),
+            )
+            if payout:
+                await db.execute(
+                    "UPDATE users SET runeshards = ? WHERE user_id = ? AND guild_id = ?",
+                    (new_balance, user_id, guild_id),
+                )
+            await db.commit()
+        return new_balance
+
+    async def prune_bounty_sets(self, before_day: str):
+        """Delete bounty sets older than `before_day` (they're only needed for recent-set exclusion)."""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("DELETE FROM bounty_sets WHERE day < ?", (before_day,))
+            await db.commit()
 
     # ── Store ──────────────────────────────────────────────────────────────────
     async def get_store_items(self, guild_id: int) -> list[dict]:
