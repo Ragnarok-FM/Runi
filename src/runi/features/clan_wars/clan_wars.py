@@ -1,4 +1,5 @@
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -59,6 +60,39 @@ class CycleOutcome:
         return "\n".join(f"• {w}" for w in self.warnings) if self.warnings else "None"
 
 
+# Discord rejects/cuts an embed description over 4096 characters, counted
+# AFTER :emoji: tokens are expanded to full <:name:id> codes. Pages are filled
+# up to this budget (with headroom), so the member list can never push
+# anything off the end.
+PANEL_DESCRIPTION_BUDGET = 3900
+_EMOJI_TOKEN = re.compile(r':([a-zA-Z0-9_]+):')
+
+
+def _rendered_length(text: str) -> int:
+    """Length of text once each :name: token becomes <a:name:12345678901234567890>
+    (worst case: animated, 20-digit id), so we never underestimate."""
+    return len(text) + 25 * len(_EMOJI_TOKEN.findall(text))
+
+
+def _paginate_rows(rows: list[str]) -> list[list[str]]:
+    """Splits member rows into pages that each fit the description budget,
+    with at most CLAN_WARS_MEMBERS_PER_PAGE rows per page. Always returns at
+    least one (possibly empty) page."""
+    pages: list[list[str]] = []
+    current: list[str] = []
+    size = 0
+    for row in rows:
+        row_len = _rendered_length(row) + 2  # + the blank line between rows
+        if current and (size + row_len > PANEL_DESCRIPTION_BUDGET or len(current) >= CLAN_WARS_MEMBERS_PER_PAGE):
+            pages.append(current)
+            current, size = [], 0
+        current.append(row)
+        size += row_len
+    if current:
+        pages.append(current)
+    return pages or [[]]
+
+
 def _relative_time(ts: float) -> str:
     if ts <= 0:
         return "never"
@@ -104,7 +138,10 @@ class ClanWars(commands.Cog):
 
     # ── Panel rendering ──────────────────────────────────────────────────────
 
-    def _format_member_row(self, rank: int, entry: dict, rates: dict) -> str:
+    def _format_member_row(self, rank: int, entry: dict, rates: dict, show_conversions: bool = False) -> str:
+        """One member's line. Panel/report rows leave out the converted counts
+        (e.g. "→ 1,408 Mount Summons") to keep rows short; those appear in the
+        clan totals. /myresources passes show_conversions=True."""
         name = entry.get("display_name", f"Unknown ({entry['user_id']})")
 
         stale = "⚠️ " if entry["updated_at"] and (time.time() - entry["updated_at"]) > CLAN_WARS_STALE_AFTER_SECONDS else ""
@@ -117,7 +154,10 @@ class ClanWars(commands.Cog):
             if meta["converted_label"]:
                 converted = entry["converted"].get(key, 0)
                 pts = converted * rates.get(key, 0)
-                parts.append(f"{name_part} `{amount:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
+                if show_conversions:
+                    parts.append(f"{name_part} `{amount:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
+                else:
+                    parts.append(f"{name_part} `{amount:,}` (`{pts:,.0f}` pts)")
             elif meta["has_points"]:
                 pts = amount * rates.get(key, 0)
                 parts.append(f"{name_part} `{amount:,}` (`{pts:,.0f}` pts)")
@@ -127,7 +167,7 @@ class ClanWars(commands.Cog):
         return f"{header}\n└ {' ┃ '.join(parts)}"
 
     def _format_totals(self, data: dict) -> str:
-        lines = ["📊 **Clan Totals**", f"🏆 **Total Points:** `{data['total_points']:,.0f}` pts", ""]
+        lines = [f"🏆 **Total Points:** `{data['total_points']:,.0f}` pts", ""]
         for key, meta in RESOURCES.items():
             total = data["totals"].get(key, 0)
             name_part = f":{meta['emoji']}:" if meta["show_emoji"] else f"**{meta['label']}:**"
@@ -151,26 +191,23 @@ class ClanWars(commands.Cog):
             member = guild.get_member(entry["user_id"])
             entry["display_name"] = member.display_name if member else f"Unknown ({entry['user_id']})"
 
-        page = self.current_page.get(clan_id, 0)
-        total_pages = max(1, (len(data["members"]) + CLAN_WARS_MEMBERS_PER_PAGE - 1) // CLAN_WARS_MEMBERS_PER_PAGE)
-        page = min(page, total_pages - 1)
+        rows = [
+            self._format_member_row(i + 1, entry, data["rates"])
+            for i, entry in enumerate(data["members"])
+        ]
+        pages = _paginate_rows(rows)
+        total_pages = len(pages)
+
+        page = min(self.current_page.get(clan_id, 0), total_pages - 1)
         self.current_page[clan_id] = page
 
-        start = page * CLAN_WARS_MEMBERS_PER_PAGE
-        page_members = data["members"][start:start + CLAN_WARS_MEMBERS_PER_PAGE]
-
-        rows = [
-            self._format_member_row(start + i + 1, entry, data["rates"])
-            for i, entry in enumerate(page_members)
-        ]
-        if not rows:
-            rows = ["No submissions yet this cycle — use the buttons below to add yours!"]
-
-        content = "\n\n".join(rows) + "\n\n" + self._format_totals(data)
+        content = "\n\n".join(pages[page]) or "No submissions yet this cycle — use the buttons below to add yours!"
 
         newest_update = max((m["updated_at"] for m in data["members"]), default=0)
         timestamp_label = f"Newest update: {_relative_time(newest_update)}" if newest_update else "No submissions yet"
 
+        # Totals go in their own embed field (own 1024-char limit, shown below
+        # the member list) so they're on every page and can never be cut off.
         return self.bot.embed_renderer.render("clan_war_panel", {
             "clan_name": clan["name"],
             "content": content,
@@ -178,6 +215,8 @@ class ClanWars(commands.Cog):
             "total_pages": total_pages,
             "refresh_minutes": CLAN_WARS_AUTO_REFRESH_SECONDS // 60,
             "timestamp_label": timestamp_label,
+            "totals": self._format_totals(data),
+            "fields": [("📊 Clan Totals", "{totals}", False)],
         })
 
     async def render_report_pages(self, guild: discord.Guild, clan: dict) -> list[discord.Embed]:
@@ -194,35 +233,27 @@ class ClanWars(commands.Cog):
             member = guild.get_member(entry["user_id"])
             entry["display_name"] = member.display_name if member else f"Unknown ({entry['user_id']})"
 
-        total_pages = max(1, (len(data["members"]) + CLAN_WARS_MEMBERS_PER_PAGE - 1) // CLAN_WARS_MEMBERS_PER_PAGE)
+        rows = [
+            self._format_member_row(i + 1, entry, data["rates"])
+            for i, entry in enumerate(data["members"])
+        ]
+        row_pages = _paginate_rows(rows)
+        total_pages = len(row_pages)
+        totals = self._format_totals(data)
 
         pages = []
-        for page in range(total_pages):
-            start = page * CLAN_WARS_MEMBERS_PER_PAGE
-            page_members = data["members"][start:start + CLAN_WARS_MEMBERS_PER_PAGE]
-
-            rows = [
-                self._format_member_row(start + i + 1, entry, data["rates"])
-                for i, entry in enumerate(page_members)
-            ]
-            if not rows:
-                rows = ["No submissions this cycle."]
-
-            content = "\n\n".join(rows)
-            if page == total_pages - 1:
-                # Totals only once, at the end, rather than repeated on
-                # every static message (unlike the live panel, where
-                # repeating it on every page makes sense since a viewer
-                # might land on any page first).
-                content += "\n\n" + self._format_totals(data)
-
-            embed = self.bot.embed_renderer.render("clan_war_report", {
+        for page, page_rows in enumerate(row_pages):
+            render_data = {
                 "clan_name": clan["name"],
-                "content": content,
+                "content": "\n\n".join(page_rows) or "No submissions this cycle.",
                 "page": page + 1,
                 "total_pages": total_pages,
-            })
-            pages.append(embed)
+            }
+            if page == total_pages - 1:
+                # Totals once, under the last page of the report.
+                render_data["totals"] = totals
+                render_data["fields"] = [("📊 Clan Totals", "{totals}", False)]
+            pages.append(self.bot.embed_renderer.render("clan_war_report", render_data))
 
         return pages
 
@@ -439,8 +470,8 @@ class ClanWars(commands.Cog):
 
     async def _create_new_war_thread(self, guild: discord.Guild, clan: dict) -> CycleOutcome:
         """
-        Creates a fresh forum thread for a clan's war cycle, posts a locked
-        panel into it, and points clan_war_panels at it. Shared by the weekly
+        Creates a fresh (unlocked) forum thread for a clan's war cycle, posts
+        the panel into it, and points clan_war_panels at it. Shared by the weekly
         job and /newpanelthread, so they can't drift apart.
         Caller MUST already hold the clan's lock.
         """
@@ -497,11 +528,9 @@ class ClanWars(commands.Cog):
                     f"Delete the thread '{thread_name}' manually."
                 )
 
-        try:
-            await new_thread.edit(locked=True)
-        except discord.HTTPException as exc:
-            log.error(f"Failed to lock new thread for clan '{name}': {exc}")
-            outcome.warnings.append("The new thread couldn't be locked, so members can post in it. Lock it manually.")
+        # The new thread is deliberately left UNLOCKED: in a locked thread,
+        # regular members can't use the panel's buttons. It gets locked at the
+        # next weekly reset, once its cycle is over (see step 4 above).
 
         if not await self._refresh_panel_locked(clan_id):
             outcome.warnings.append(f"The new panel's first refresh failed. It will show 'Setting up...' until the next auto-refresh (within {CLAN_WARS_AUTO_REFRESH_SECONDS // 60} minutes).")
@@ -626,7 +655,7 @@ class ClanWars(commands.Cog):
             return
 
         entry["display_name"] = interaction.user.display_name
-        row = self._format_member_row(rank, entry, data["rates"])
+        row = self._format_member_row(rank, entry, data["rates"], show_conversions=True)
 
         embed = self.bot.embed_renderer.render("clan_war_my_resources", {
             "content": row,
