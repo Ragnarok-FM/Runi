@@ -63,7 +63,7 @@ CLAN_WARS_AUTO_REFRESH_SECONDS: int = 10 * 60
 CLAN_WARS_STALE_AFTER_SECONDS: int = 7 * 24 * 60 * 60
  
 # Members shown per page on the live panel and in the weekly report
-CLAN_WARS_MEMBERS_PER_PAGE: int = 10
+CLAN_WARS_MEMBERS_PER_PAGE: int = 5
  
 # How long the clan picker in admin commands reuses the clan list before
 # asking the database again (seconds). Autocomplete fires on every keystroke.
