@@ -20,7 +20,7 @@ from runi.config import (
     CLAN_WARS_CLAN_CACHE_SECONDS,
 )
 
-from .resources import RESOURCES, DEFAULT_RATES, CONVERT_PER
+from .resources import RESOURCES, DEFAULT_RATES, CONVERT_PER, ALSO_COUNTS_AS
 from .clans import find_member_clan
 from .views import PanelView
 
@@ -111,10 +111,21 @@ class ClanWars(commands.Cog):
 
     # ── Panel rendering ──────────────────────────────────────────────────────
 
+    @staticmethod
+    def _conversion_text(meta: dict, converted: int) -> str:
+        """e.g. "→ `1,662` Mount Summons + `1,662` Mount Merges" for Clockwinders."""
+        text = f"→ `{converted:,}` {meta['converted_label']}"
+        bonus = meta.get("also_counts_as")
+        if bonus:
+            text += f" + `{converted:,}` {RESOURCES[bonus]['label']}"
+        return text
+
     def _format_member_row(self, rank: int, entry: dict, rates: dict, show_conversions: bool = False) -> str:
         """One member's line. Panel/report rows leave out the converted counts
         (e.g. "→ 1,408 Mount Summons") to keep rows short; those appear in the
-        clan totals. /myresources passes show_conversions=True."""
+        clan totals. /myresources passes show_conversions=True. Per-resource
+        points come from the database layer and include any also_counts_as
+        bonus (e.g. the Mount Merge each Mount Summon brings)."""
         name = entry.get("display_name", f"Unknown ({entry['user_id']})")
 
         stale = "⚠️ " if entry["updated_at"] and (time.time() - entry["updated_at"]) > CLAN_WARS_STALE_AFTER_SECONDS else ""
@@ -124,15 +135,10 @@ class ClanWars(commands.Cog):
         for key, meta in RESOURCES.items():
             amount = entry["resources"].get(key, 0)
             name_part = f":{meta['emoji']}:" if meta["show_emoji"] else f"{meta['label']}:"
-            if meta["converted_label"]:
-                converted = entry["converted"].get(key, 0)
-                pts = converted * rates.get(key, 0)
-                if show_conversions:
-                    parts.append(f"{name_part} `{amount:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
-                else:
-                    parts.append(f"{name_part} `{amount:,}` (`{pts:,.0f}` pts)")
+            pts = entry["resource_points"].get(key, 0)
+            if meta["converted_label"] and show_conversions:
+                parts.append(f"{name_part} `{amount:,}` {self._conversion_text(meta, entry['converted'].get(key, 0))} (`{pts:,.0f}` pts)")
             elif meta["has_points"]:
-                pts = amount * rates.get(key, 0)
                 parts.append(f"{name_part} `{amount:,}` (`{pts:,.0f}` pts)")
             else:
                 parts.append(f"{name_part} `{amount:,}`")
@@ -144,12 +150,11 @@ class ClanWars(commands.Cog):
         for key, meta in RESOURCES.items():
             total = data["totals"].get(key, 0)
             name_part = f":{meta['emoji']}:" if meta["show_emoji"] else f"**{meta['label']}:**"
+            pts = data["totals_points"].get(key, 0)
             if meta["converted_label"]:
                 converted = data["totals_converted"].get(key, 0)
-                pts = converted * data["rates"].get(key, 0)
-                lines.append(f"• {name_part} `{total:,}` → `{converted:,}` {meta['converted_label']} (`{pts:,.0f}` pts)")
+                lines.append(f"• {name_part} `{total:,}` {self._conversion_text(meta, converted)} (`{pts:,.0f}` pts)")
             elif meta["has_points"]:
-                pts = total * data["rates"].get(key, 0)
                 lines.append(f"• {name_part} `{total:,}` (`{pts:,.0f}` pts)")
             else:
                 lines.append(f"• {name_part} `{total:,}`")
@@ -157,7 +162,7 @@ class ClanWars(commands.Cog):
 
     async def render_panel_embed(self, guild: discord.Guild, clan: dict) -> discord.Embed:
         clan_id = clan["clan_id"]
-        data = await self.bot.db.get_clan_war_leaderboard(clan_id, DEFAULT_RATES, CONVERT_PER)
+        data = await self.bot.db.get_clan_war_leaderboard(clan_id, DEFAULT_RATES, CONVERT_PER, ALSO_COUNTS_AS)
 
         # Attach display names now (requires the guild object, not available in the DB layer)
         for entry in data["members"]:
@@ -200,7 +205,7 @@ class ClanWars(commands.Cog):
         posted as a final report right before a cycle resets.
         """
         clan_id = clan["clan_id"]
-        data = await self.bot.db.get_clan_war_leaderboard(clan_id, DEFAULT_RATES, CONVERT_PER)
+        data = await self.bot.db.get_clan_war_leaderboard(clan_id, DEFAULT_RATES, CONVERT_PER, ALSO_COUNTS_AS)
 
         for entry in data["members"]:
             member = guild.get_member(entry["user_id"])
@@ -612,7 +617,7 @@ class ClanWars(commands.Cog):
 
         await interaction.response.defer(ephemeral=True)
 
-        data = await self.bot.db.get_clan_war_leaderboard(clan["clan_id"], DEFAULT_RATES, CONVERT_PER)
+        data = await self.bot.db.get_clan_war_leaderboard(clan["clan_id"], DEFAULT_RATES, CONVERT_PER, ALSO_COUNTS_AS)
 
         rank = None
         entry = None
@@ -661,6 +666,40 @@ class ClanWars(commands.Cog):
             "points": points,
         })
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ── /resetresourcepoints (admin) ─────────────────────────────────────────
+    @app_commands.command(name="resetresourcepoints", description="[Admin] Set all of a clan's point rates back to baseline in one go.")
+    @app_commands.describe(clan="Which clan's rates to reset.")
+    @app_commands.default_permissions(administrator=True)
+    async def resetresourcepoints(self, interaction: discord.Interaction, clan: int):
+        guild = interaction.guild
+        assert guild is not None
+
+        clan_row = await self.bot.db.get_clan(clan)
+        if not clan_row or clan_row["guild_id"] != guild.id:
+            embed = self.bot.embed_renderer.render("clan_not_found", {})
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        before = await self.bot.db.get_resource_rates(clan, DEFAULT_RATES)
+        await self.bot.db.reset_resource_rates(clan)
+        await self.refresh_panel(clan)
+
+        lines = []
+        for key, meta in RESOURCES.items():
+            if not meta["has_points"]:
+                continue
+            old, new = before.get(key, 0), DEFAULT_RATES[key]
+            change = f"`{old:,.0f}` → `{new:,.0f}`" if old != new else f"`{new:,.0f}` (unchanged)"
+            lines.append(f"• **{meta['label']}:** {change}")
+
+        embed = self.bot.embed_renderer.render("clan_rates_reset", {
+            "name": clan_row["name"],
+            "rates": "\n".join(lines),
+        })
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ── /resetwar (admin) ─────────────────────────────────────────────────────
     @app_commands.command(name="resetwar", description="[Admin] Clear all submitted resources for one clan's new war cycle.")
@@ -775,12 +814,14 @@ class ClanWars(commands.Cog):
     register.error(_command_error)
     resourcepanel_setup.error(_command_error)
     setresourcepoints.error(_command_error)
+    resetresourcepoints.error(_command_error)
     resetwar.error(_command_error)
     newpanelthread.error(_command_error)
     runweeklyreset.error(_command_error)
 
     resourcepanel_setup.autocomplete("clan")(_clan_autocomplete)
     setresourcepoints.autocomplete("clan")(_clan_autocomplete)
+    resetresourcepoints.autocomplete("clan")(_clan_autocomplete)
     resetwar.autocomplete("clan")(_clan_autocomplete)
     newpanelthread.autocomplete("clan")(_clan_autocomplete)
     runweeklyreset.autocomplete("clan")(_clan_autocomplete)

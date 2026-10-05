@@ -27,6 +27,11 @@ RESOURCES = {
         "default_rate": 600,       # points per Mount Summon
         "convert_per": 50,         # 50 Clockwinders = 1 Mount Summon
         "converted_label": "Mount Summons",
+        # Every summoned mount can also be merged, so each Mount Summon also
+        # scores one Mount Merge (at the clan's Mount Merges rate). Members'
+        # own Mount Merges submissions should therefore only cover mounts
+        # they already had, not ones they'll get from these summons.
+        "also_counts_as": "mount_merges",
     },
     "eggshells": {
         "label": "Eggshells",
@@ -93,3 +98,4 @@ RESOURCES = {
 # Convenience lookups
 DEFAULT_RATES = {key: meta["default_rate"] for key, meta in RESOURCES.items()}
 CONVERT_PER = {key: meta["convert_per"] for key, meta in RESOURCES.items()}
+ALSO_COUNTS_AS = {key: meta["also_counts_as"] for key, meta in RESOURCES.items() if meta.get("also_counts_as")}
