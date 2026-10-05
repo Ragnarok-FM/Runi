@@ -1,5 +1,4 @@
 import asyncio
-import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -60,37 +59,11 @@ class CycleOutcome:
         return "\n".join(f"• {w}" for w in self.warnings) if self.warnings else "None"
 
 
-# Discord rejects/cuts an embed description over 4096 characters, counted
-# AFTER :emoji: tokens are expanded to full <:name:id> codes. Pages are filled
-# up to this budget (with headroom), so the member list can never push
-# anything off the end.
-PANEL_DESCRIPTION_BUDGET = 3900
-_EMOJI_TOKEN = re.compile(r':([a-zA-Z0-9_]+):')
-
-
-def _rendered_length(text: str) -> int:
-    """Length of text once each :name: token becomes <a:name:12345678901234567890>
-    (worst case: animated, 20-digit id), so we never underestimate."""
-    return len(text) + 25 * len(_EMOJI_TOKEN.findall(text))
-
-
 def _paginate_rows(rows: list[str]) -> list[list[str]]:
-    """Splits member rows into pages that each fit the description budget,
-    with at most CLAN_WARS_MEMBERS_PER_PAGE rows per page. Always returns at
-    least one (possibly empty) page."""
-    pages: list[list[str]] = []
-    current: list[str] = []
-    size = 0
-    for row in rows:
-        row_len = _rendered_length(row) + 2  # + the blank line between rows
-        if current and (size + row_len > PANEL_DESCRIPTION_BUDGET or len(current) >= CLAN_WARS_MEMBERS_PER_PAGE):
-            pages.append(current)
-            current, size = [], 0
-        current.append(row)
-        size += row_len
-    if current:
-        pages.append(current)
-    return pages or [[]]
+    """Splits member rows into fixed pages of CLAN_WARS_MEMBERS_PER_PAGE.
+    Always returns at least one (possibly empty) page."""
+    size = CLAN_WARS_MEMBERS_PER_PAGE
+    return [rows[i:i + size] for i in range(0, len(rows), size)] or [[]]
 
 
 def _relative_time(ts: float) -> str:
