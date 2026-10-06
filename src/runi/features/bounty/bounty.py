@@ -363,10 +363,18 @@ class Bounty(commands.Cog):
 
     @commands.Cog.listener()
     async def on_runi_xp(self, message: Message, xp: int):
+        # Only for "Earn X XP" bounties (messages that passed the XP cooldown)
+        await self._handle(message.author, message.guild, {"type": "xp", "ts": time.time(), "xp": xp})
+
+    @commands.Cog.listener()
+    async def on_message(self, message: Message):
+        # Every member message counts for reply/channel/hour bounties — no XP cooldown,
+        # so a quick back-and-forth isn't silently ignored.
+        if message.author.bot or message.guild is None:
+            return
         event = {
-            "type": "xp",
+            "type": "message",
             "ts": time.time(),
-            "xp": xp,
             "channel_id": message.channel.id,
             "reply_to_member": await self._reply_target(message),
         }

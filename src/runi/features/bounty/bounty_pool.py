@@ -9,7 +9,8 @@ Event dicts always have "type" and "ts" (unix time), plus:
     daily     {}
     coinflip  {"bet": int, "choice": "heads"|"tails", "won": bool}
     slots     {"bet": int, "payout": int, "won": bool, "symbols": [str, str, str]}
-    xp        {"xp": int, "channel_id": int, "reply_to_member": int | None}
+    xp        {"xp": int}                                   (only messages that earned XP)
+    message   {"channel_id": int, "reply_to_member": int | None}  (every member message)
     command   {"name": str, "targets_other": bool}
 """
 import random
@@ -227,7 +228,7 @@ POOL: list[BountyDef] = [
     _b("C6", "common", f"Hit any payout on the slots ({BET})", {"slots"}, Count("slots", 1, when=spin_paid)),
     _b("C7", "common", "Earn 75 XP by chatting", {"chat"}, Count("xp", 75, amount=lambda ev: ev["xp"])),
     _b("C10", "common", "Reply to another member's message 2 times", {"chat"},
-       Count("xp", 2, when=lambda ev: ev["reply_to_member"] is not None)),
+       Count("message", 2, when=lambda ev: ev["reply_to_member"] is not None)),
     _b("C11", "common", "Look up a Forge Master stat with `/maxsubstats`, `/health_formula` or `/damage_formula`",
        {"explore"}, Count("command", 1, when=command_in("maxsubstats", "health_formula", "damage_formula"))),
     _b("C12", "common", "Check another member's `/profile` or `/rank`", {"explore"},
@@ -254,10 +255,10 @@ POOL: list[BountyDef] = [
        Streak("slots", 2, relevant=qualifying, success=lambda ev: ev["won"])),
     _b("E13", "epic", f"Land a {WILD} Wild on the slots ({BET})", {"slots"}, Count("slots", 1, when=spin_has_wild)),
     _b("E6", "epic", "Earn 225 XP by chatting", {"chat"}, Count("xp", 225, amount=lambda ev: ev["xp"])),
-    _b("E14", "epic", "Earn XP in 3 different channels", {"chat"},
-       Distinct("xp", 3, key=lambda ev: ev["channel_id"])),
+    _b("E14", "epic", "Send a message in 3 different channels", {"chat"},
+       Distinct("message", 3, key=lambda ev: ev["channel_id"])),
     _b("E15", "epic", "Reply to 3 different members", {"chat"},
-       Distinct("xp", 3, key=lambda ev: ev["reply_to_member"])),
+       Distinct("message", 3, key=lambda ev: ev["reply_to_member"])),
     _b("E7", "epic", f"Win on both coinflip and slots ({BET})", {"coinflip", "slots"},
        ("Win a coinflip", Count("coinflip", 1, when=flip_won)),
        ("Win a slots spin", Count("slots", 1, when=spin_won))),
@@ -284,8 +285,8 @@ POOL: list[BountyDef] = [
     _b("L8", "legendary", f"Land two or more 💎 on one spin — {WILD} counts ({BET})", {"slots"},
        Count("slots", 1, when=spin_pair_of("💎"))),
     _b("L5", "legendary", "Earn 450 XP by chatting", {"chat"}, Count("xp", 450, amount=lambda ev: ev["xp"])),
-    _b("L9", "legendary", "Earn XP in 6 different hours of the day", {"chat"},
-       Distinct("xp", 6, key=utc_hour), min_hours=6),
+    _b("L9", "legendary", "Send a message in 6 different hours of the day", {"chat"},
+       Distinct("message", 6, key=utc_hour), min_hours=6),
     _b("L10", "legendary", f"**Triple Threat** — win 3 coinflips in a row and land a 3×+ slots win ({BET})",
        {"coinflip", "slots"},
        ("Win 3 coinflips in a row", Streak("coinflip", 3, relevant=qualifying, success=lambda ev: ev["won"])),

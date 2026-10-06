@@ -56,7 +56,8 @@ EMBEDS = {
             ("🏆 Completion Bonus", "Complete all three to earn an extra **{bonus_rate}** of the set's rewards.", False),
             ("Rules", (
                 "• Coinflip and slots rounds only count with a bet of **{min_bet}+** :Runes:\n"
-                "• Chat bounties count messages that earn XP\n"
+                "• \"Earn XP\" bounties count messages that earn XP; reply, channel and hour bounties count every message\n"
+                "• Replies to bots or to yourself don't count\n"
                 "• Bounties reset at 00:00 UTC, together with `/daily`"
             ), False),
         ],
