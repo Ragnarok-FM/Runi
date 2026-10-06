@@ -941,6 +941,13 @@ class Database:
             )
             await db.commit()
 
+    async def reset_resource_rates(self, clan_id: int) -> None:
+        """Removes all of a clan's custom rates, so every resource falls back
+        to its baseline value from `defaults` (see get_resource_rates)."""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("DELETE FROM clan_rates WHERE clan_id = ?", (clan_id,))
+            await db.commit()
+
     async def submit_clan_war_resource(self, guild_id: int, user_id: int, resource: str, amount: int, clan_id: int) -> None:
         """
         Overwrites a member's submitted amount for one resource, tagging it
@@ -957,7 +964,8 @@ class Database:
             )
             await db.commit()
 
-    async def get_clan_war_leaderboard(self, clan_id: int, defaults: dict[str, float], convert_per: dict[str, int]) -> dict:
+    async def get_clan_war_leaderboard(self, clan_id: int, defaults: dict[str, float], convert_per: dict[str, int],
+                                       also_counts_as: dict[str, str] | None = None) -> dict:
         """
         Builds the full panel dataset for one clan.
 
@@ -965,12 +973,18 @@ class Database:
         point-earning unit (e.g. 50 Clockwinders = 1 Mount Summon). Use 1
         for resources with no conversion (points = amount * rate directly).
 
+        `also_counts_as` maps resource -> another resource that each converted
+        unit ALSO earns, at that other resource's rate. E.g. {"clockwinders":
+        "mount_merges"}: every Mount Summon also yields one mount to merge, so
+        it scores the Clockwinders rate + the Mount Merges rate.
+
         Returns {
             "members": [
                 {
                     "user_id": int,
                     "resources": {resource: amount, ...},
                     "converted": {resource: converted_unit_count, ...},
+                    "resource_points": {resource: points, ...},   # incl. also_counts_as bonus
                     "points": float,
                     "updated_at": float,   # most recent submission across all resources
                 },
@@ -978,11 +992,18 @@ class Database:
             ],  # sorted by points DESC
             "totals": {resource: amount, ...},
             "totals_converted": {resource: converted_unit_count, ...},
+            "totals_points": {resource: points, ...},
             "total_points": float,   # exact sum of every member's points, never recalculated separately
             "rates": {resource: points_per_unit, ...},
         }
         """
         rates = await self.get_resource_rates(clan_id, defaults)
+        also_counts_as = also_counts_as or {}
+
+        def per_unit(r: str) -> float:
+            """Points for one converted unit of r, including any bonus resource."""
+            bonus = also_counts_as.get(r)
+            return rates.get(r, 0) + (rates.get(bonus, 0) if bonus else 0)
 
         members: dict[int, dict] = {}
         totals: dict[str, int] = {r: 0 for r in defaults}
@@ -1009,17 +1030,25 @@ class Database:
             entry["converted"] = {
                 r: entry["resources"].get(r, 0) // convert_per.get(r, 1) for r in defaults
             }
-            entry["points"] = sum(
-                entry["converted"][r] * rates.get(r, 0) for r in defaults
-            )
+            entry["resource_points"] = {
+                r: entry["converted"][r] * per_unit(r) for r in defaults
+            }
+            entry["points"] = sum(entry["resource_points"].values())
 
         # Total points is always the exact sum of member points, never
         # recalculated independently from `totals` — this guarantees the
         # Clan Totals section can never disagree with the member rows.
         total_points = sum(entry["points"] for entry in members.values())
 
+        # Converted counts and points in the totals are summed from the members
+        # (each member converts their own amount), not recalculated from the
+        # clan-wide raw total, so the totals always agree with the member rows
+        # and add up to exactly total_points.
         totals_converted = {
-            r: totals.get(r, 0) // convert_per.get(r, 1) for r in defaults
+            r: sum(entry["converted"][r] for entry in members.values()) for r in defaults
+        }
+        totals_points = {
+            r: sum(entry["resource_points"][r] for entry in members.values()) for r in defaults
         }
 
         member_list = sorted(members.values(), key=lambda e: e["points"], reverse=True)
@@ -1028,6 +1057,7 @@ class Database:
             "members": member_list,
             "totals": totals,
             "totals_converted": totals_converted,
+            "totals_points": totals_points,
             "total_points": total_points,
             "rates": rates,
         }

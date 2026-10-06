@@ -57,6 +57,13 @@ EMBEDS = {
         "footer": "Runi • Clan Wars"
     },
 
+    "clan_rates_reset": {
+        "title": "✅ Rates Reset to Baseline",
+        "description": "All point rates for **{name}** are back to baseline:\n\n{rates}\n\nThe panel has been refreshed. Mount Summons also count as Mount Merges at the Mount Merges rate.",
+        "color": "green",
+        "footer": "Runi • Clan Wars"
+    },
+
     "clan_war_reset": {
         "title": "🔄 New War Cycle Started",
         "description": "All submitted resources have been cleared for a fresh clan war cycle.",
