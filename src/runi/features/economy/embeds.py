@@ -87,6 +87,23 @@ EMBEDS = {
         "footer": "Runi • Economy"
     },
 
+    "dice_rolling": {
+        "title": "🎲 Rolling the dice...",
+        "description": "{board}",
+        "color": "gold",
+        "footer": "Runi • Economy",
+    },
+
+    "dice_result": {
+        "title": "🎲 {outcome}",
+        "description": "{board}\n\n{description}",
+        "fields": [
+            ("Balance", "{balance:,} :Runes:", True)
+        ],
+        "color": "gold",
+        "footer": "Runi • Economy"
+    },
+
     "richlist": {
         "title": ":Runes: Hall of Wealth",
         "description": "{content}",
