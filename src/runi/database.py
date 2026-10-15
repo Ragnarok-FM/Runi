@@ -536,6 +536,66 @@ class Database:
             await db.commit()
         return {"success": True, "won": won, "result": result, "balance": new_balance, "change": abs(change)}
 
+    async def roll_dice(self, user_id: int, guild_id: int, bet: int) -> dict:
+        """
+        Roll two dice for the player and two for Runi. Highest total wins.
+        Win = +bet, loss = -bet, tie = bet returned (push).
+
+        Returns:
+        {
+            "success": bool,
+            "reason": str,                 # "ok" | "insufficient_funds"
+            "player_dice": [int, int],
+            "runi_dice": [int, int],
+            "player_total": int,
+            "runi_total": int,
+            "outcome": str,                # "win" | "loss" | "tie"
+            "balance": int,
+            "change": int,                 # absolute Runes won/lost (0 on tie)
+        }
+        """
+        import random
+
+        async with aiosqlite.connect(self.path) as db:
+            user = await self._fetch_user(db, user_id, guild_id)
+            if user["runeshards"] < bet:
+                return {"success": False, "reason": "insufficient_funds", "balance": user["runeshards"]}
+
+            player_dice = [random.randint(1, 6), random.randint(1, 6)]
+            runi_dice = [random.randint(1, 6), random.randint(1, 6)]
+            player_total = sum(player_dice)
+            runi_total = sum(runi_dice)
+
+            if player_total > runi_total:
+                outcome = "win"
+                change = bet
+            elif player_total < runi_total:
+                outcome = "loss"
+                change = -bet
+            else:
+                outcome = "tie"
+                change = 0
+
+            new_balance = user["runeshards"] + change
+            if change:
+                await db.execute(
+                    "UPDATE users SET runeshards = ? WHERE user_id = ? AND guild_id = ?",
+                    (new_balance, user_id, guild_id),
+                )
+                await db.commit()
+
+        return {
+            "success": True,
+            "reason": "ok",
+            "player_dice": player_dice,
+            "runi_dice": runi_dice,
+            "player_total": player_total,
+            "runi_total": runi_total,
+            "outcome": outcome,
+            "balance": new_balance,
+            "change": abs(change),
+        }
+
     async def spin_slots(self, user_id: int, guild_id: int, bet: int) -> dict:
         """
         Spin the slot machine.

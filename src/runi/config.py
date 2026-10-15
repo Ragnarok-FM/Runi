@@ -39,9 +39,12 @@ DAILY_STREAK_BONUS: int = 50
 # Maximum streak that can be accumulated (caps the bonus)
 DAILY_STREAK_MAX: int = 30
 
+# ── Economy – /dice ───────────────────────────────────────────────────────────
+# Pause between each reveal step of the /dice animation (seconds).
+# The roll goes: both rolling → your dice shown → Runi's dice shown + result.
+DICE_ROLL_DELAY_SECONDS: float = 1.0
+
 # ── Clan Wars ─────────────────────────────────────────────────────────────────
-# (Paste at the bottom of runi/config.py. The two imports can stay here or be
-#  moved to the top of the file — either works.)
  
 from datetime import time as _time
 from zoneinfo import ZoneInfo

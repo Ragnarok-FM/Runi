@@ -11,6 +11,7 @@ from runi.config import (
     DAILY_BASE,
     DAILY_STREAK_BONUS,
     DAILY_STREAK_MAX,
+    DICE_ROLL_DELAY_SECONDS,
 )
 
 if TYPE_CHECKING:
@@ -64,6 +65,22 @@ def _parse_bet(value: str, balance: int) -> int:
         raise ValueError
 
     return amount
+
+
+# ── /dice helpers ─────────────────────────────────────────────────────────────
+DICE_FACES = {1: "⚀", 2: "⚁", 3: "⚂", 4: "⚃", 5: "⚄", 6: "⚅"}
+
+
+def _dice_line(name: str, dice: list[int] | None) -> str:
+    """One row of the dice board. dice=None shows the row as still rolling."""
+    if dice is None:
+        return f"**{name}**\n🎲 🎲 — *rolling...*"
+    faces = " ".join(DICE_FACES[d] for d in dice)
+    return f"**{name}**\n{faces}  ({dice[0]} + {dice[1]}) = **{sum(dice)}**"
+
+
+def _dice_board(player_name: str, player_dice: list[int] | None, runi_dice: list[int] | None) -> str:
+    return f"{_dice_line(player_name, player_dice)}\n\n{_dice_line('Runi', runi_dice)}"
 
 
 # ── /work flavour text ────────────────────────────────────────────────────────
@@ -383,6 +400,82 @@ class Economy(commands.Cog):
             "symbols": list(results["symbols"]),
         })
 
+    # ── /dice ──────────────────────────────────────────────────────────────────
+    @commands.guild_only()
+    @commands.hybrid_command(name="dice", description="Roll two dice against Runi — highest total wins!")
+    @app_commands.autocomplete(bet=bet_autocomplete)
+    @app_commands.describe(bet="Enter an amount, whole percentage (i.e. 30%), or preset such as all, half, or quarter.")
+    async def dice(self, ctx: commands.Context, bet: str):
+        guild = ctx.guild
+        assert guild is not None
+
+        user = await self.bot.db.get_user(ctx.author.id, guild.id)
+
+        try:
+            bet = _parse_bet(bet, user["runeshards"])
+        except ValueError:
+            embed = self.bot.embed_renderer.render("slots_invalid_bet", {})
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return
+
+        # Outcome is decided and the balance updated before any animation, so a
+        # failed message edit can never leave the bet in limbo.
+        result = await self.bot.db.roll_dice(ctx.author.id, guild.id, bet)
+
+        if not result["success"]:
+            embed = self.bot.embed_renderer.render("error_insufficient_funds", {
+                "balance": result["balance"]
+            })
+            await ctx.send(embed=embed, ephemeral=True, delete_after=5)
+            return
+
+        player_name = ctx.author.display_name
+
+        # Stage 1: both rolling → Stage 2: player revealed → Final: Runi revealed
+        embed = self.bot.embed_renderer.render("dice_rolling", {
+            "board": _dice_board(player_name, None, None),
+        })
+        message = await ctx.send(embed=embed)
+
+        await asyncio.sleep(DICE_ROLL_DELAY_SECONDS)
+        embed = self.bot.embed_renderer.render("dice_rolling", {
+            "board": _dice_board(player_name, result["player_dice"], None),
+        })
+        await message.edit(embed=embed)
+
+        await asyncio.sleep(DICE_ROLL_DELAY_SECONDS)
+
+        p_total, r_total = result["player_total"], result["runi_total"]
+        if result["outcome"] == "win":
+            outcome = "You Won!"
+            description = f"**{p_total}** beats **{r_total}**. You won **{result['change']:,} :Runes:**!"
+        elif result["outcome"] == "loss":
+            outcome = "You Lost!"
+            description = f"Runi's **{r_total}** beats your **{p_total}**. You lost **{result['change']:,} :Runes:**."
+        else:
+            outcome = "It's a Tie!"
+            description = f"Both rolled **{p_total}**. Your **{bet:,} :Runes:** bet is returned."
+
+        embed = self.bot.embed_renderer.render("dice_result", {
+            "board": _dice_board(player_name, result["player_dice"], result["runi_dice"]),
+            "outcome": outcome,
+            "description": description,
+            "balance": result["balance"],
+        })
+        await message.edit(embed=embed)
+
+        # Ties are neither a win nor a loss, so they stay off /highroller.
+        if result["outcome"] != "tie":
+            await self.bot.db.add_gambling_record(
+                guild_id=guild.id,
+                user_id=ctx.author.id,
+                display_name=player_name,
+                game="dice",
+                won=result["outcome"] == "win",
+                amount=result["change"],
+                message_url=message.jump_url,
+            )
+
     # ── /richlist ──────────────────────────────────────────────────────────────
     @commands.guild_only()
     @commands.hybrid_command(name="richlist", description="See the wealthiest members on this server.")
@@ -415,7 +508,7 @@ class Economy(commands.Cog):
     @app_commands.describe(type="View biggest wins or biggest losses.", game="Filter by game (leave blank to show all games).")
     @app_commands.choices(
         type=[app_commands.Choice(name="Wins", value="wins"), app_commands.Choice(name="Losses", value="losses")],
-        game=[app_commands.Choice(name="Coinflip", value="coinflip"), app_commands.Choice(name="Slots", value="slots")]
+        game=[app_commands.Choice(name="Coinflip", value="coinflip"), app_commands.Choice(name="Slots", value="slots"), app_commands.Choice(name="Dice", value="dice")]
     )
     async def highroller(self, ctx: commands.Context, type: app_commands.Choice[str], game: Optional[app_commands.Choice[str]] = None):
         await ctx.defer()
