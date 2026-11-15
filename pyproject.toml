@@ -5,7 +5,8 @@ requires-python = ">=3.11"
 dependencies = [
     "discord.py",
     "python-dotenv",
-    "aiosqlite"
+    "aiosqlite",
+    "tzdata"
 ]
 
 [tool.setuptools.packages.find]
