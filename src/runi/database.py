@@ -360,20 +360,61 @@ class Database:
 
 
     async def get_gambling_records(self, guild_id: int, won: bool, game: str | None = None, limit: int = 10) -> list[dict]:
-        query = "SELECT * FROM gambling_records WHERE guild_id = ? AND won = ?"
+        filters = "guild_id = ? AND won = ?"
         params = [guild_id, int(won)]
         
         if game is not None:
-            query += " AND game = ?"
+            filters += " AND game = ?"
             params.append(game)
-        
-        query += " ORDER BY amount DESC LIMIT ?"
+
+        query = f"""
+            WITH ranked_records AS (
+                SELECT *,
+                       ROW_NUMBER() OVER (ORDER BY amount DESC, id ASC) AS ranking
+                FROM gambling_records
+                WHERE {filters}
+            ),
+            top_users AS (
+                SELECT user_id, MIN(ranking) AS first_rank
+                FROM ranked_records
+                GROUP BY user_id
+                ORDER BY first_rank
+                LIMIT ?
+            ),
+            extra_positions AS (
+                SELECT records.user_id, records.ranking
+                FROM ranked_records AS records
+                JOIN top_users ON records.user_id = top_users.user_id
+                WHERE records.ranking <= 10
+                  AND records.ranking > top_users.first_rank
+            )
+            SELECT records.*, top_users.first_rank, extra_positions.ranking AS additional_rank
+            FROM top_users
+            JOIN ranked_records AS records
+              ON records.user_id = top_users.user_id
+             AND records.ranking = top_users.first_rank
+            LEFT JOIN extra_positions
+              ON extra_positions.user_id = top_users.user_id
+            ORDER BY top_users.first_rank, extra_positions.ranking
+        """
         params.append(limit)
         
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(query, params) as cur:
                 cols = [d[0] for d in cur.description]
-                return [dict(zip(cols, row)) for row in await cur.fetchall()]
+                rows = [dict(zip(cols, row)) for row in await cur.fetchall()]
+
+        results = []
+        for row in rows:
+            additional_rank = row.pop("additional_rank")
+            if results and results[-1]["user_id"] == row["user_id"]:
+                if additional_rank is not None:
+                    results[-1]["additional_ranks"].append(additional_rank)
+            else:
+                row["additional_ranks"] = [] if additional_rank is None else [additional_rank]
+                results.append(row)
+
+        return results
 
     async def transfer_runes(self, from_id: int, to_id: int, guild_id: int, amount: int) -> dict:
         """

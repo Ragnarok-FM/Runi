@@ -115,7 +115,7 @@ EMBEDS = {
         "title": "Hall of {type}",
         "description": "{content}",
         "color": "gold",
-        "footer": "Runi • Economy"
+        "footer": "Runi • Economy | Other results by the same user that would be in the top 10 are marked with 🔥."
     },
 
     "give_invalid_amount": {

@@ -511,14 +511,27 @@ class Economy(commands.Cog):
             member = guild.get_member(row["user_id"])
             name = (member.display_name if member else row["display_name"])
             place = medals[i] if i < 3 else f"`{i + 1}.`"
+            rank_span = ""
+            if row["additional_ranks"]:
+                ranges = []
+                range_start = range_end = row["additional_ranks"][0]
+                for rank in row["additional_ranks"][1:]:
+                    if rank == range_end + 1:
+                        range_end = rank
+                        continue
+                    ranges.append(f"#{range_start}" if range_start == range_end else f"#{range_start}–{range_end}")
+                    range_start = range_end = rank
+                ranges.append(f"#{range_start}" if range_start == range_end else f"#{range_start}–{range_end}")
+                rank_span = f"🔥 **{', '.join(ranges)}**\n"
 
             game_line = ""
             if not game:
-                game_line = f"🎮 **{row["game"].capitalize()}**\n"
+                game_line = f"🎮 **{row['game'].capitalize()}**\n"
 
             content.append(
                 f"{place} **{name}**\n"
                 f":Runes: **{row['amount']:,}**\n"
+                f"{rank_span}"
                 f"{game_line}"
                 f"[Jump to Game]({row['message_url']})"
             )
